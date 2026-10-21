@@ -1,0 +1,318 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* FocusDeskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* FocusDeskApp.swift */; };
+		A10000000000000000000002 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppController.swift */; };
+		A10000000000000000000003 /* PlanTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* PlanTask.swift */; };
+		A10000000000000000000004 /* DefaultPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DefaultPlan.swift */; };
+		A10000000000000000000005 /* ScheduleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ScheduleEngine.swift */; };
+		A10000000000000000000006 /* PlanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* PlanStore.swift */; };
+		A10000000000000000000007 /* FloatingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* FloatingView.swift */; };
+		A10000000000000000000008 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* PlanView.swift */; };
+		A10000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SettingsView.swift */; };
+		A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ScheduleEngineTests.swift */; };
+		A10000000000000000000012 /* PlanValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* PlanValidationTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000001 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000010;
+			remoteInfo = FocusDesk;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* FocusDeskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusDeskApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* PlanTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTask.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* DefaultPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultPlan.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* ScheduleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* PlanStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* FloatingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingView.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* ScheduleEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleEngineTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000012 /* PlanValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanValidationTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000020 /* FocusDesk.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FocusDesk.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000021 /* FocusDeskTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FocusDeskTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000002 /* FocusDesk */,
+				A50000000000000000000008 /* FocusDeskTests */,
+				A50000000000000000000009 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* FocusDesk */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000003 /* App */,
+				A50000000000000000000004 /* Models */,
+				A50000000000000000000005 /* Services */,
+				A50000000000000000000006 /* Views */,
+				A50000000000000000000007 /* Resources */,
+			);
+			path = FocusDesk;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000001 /* FocusDeskApp.swift */, A20000000000000000000002 /* AppController.swift */,);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* Models */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */,);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000005 /* Services */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000005 /* ScheduleEngine.swift */, A20000000000000000000006 /* PlanStore.swift */,);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000006 /* Views */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000007 /* FloatingView.swift */, A20000000000000000000008 /* PlanView.swift */, A20000000000000000000009 /* SettingsView.swift */,);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000007 /* Resources */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000011 /* Info.plist */,);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000008 /* FocusDeskTests */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000010 /* ScheduleEngineTests.swift */, A20000000000000000000012 /* PlanValidationTests.swift */,);
+			path = FocusDeskTests;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000009 /* Products */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000020 /* FocusDesk.app */, A20000000000000000000021 /* FocusDeskTests.xctest */,);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000010 /* FocusDesk */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000000000000000000002;
+			buildPhases = (A60000000000000000000001 /* Sources */, A40000000000000000000001 /* Frameworks */, A70000000000000000000001 /* Resources */,);
+			buildRules = ();
+			dependencies = ();
+			name = FocusDesk;
+			productName = FocusDesk;
+			productReference = A20000000000000000000020 /* FocusDesk.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000011 /* FocusDeskTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000000000000000000003;
+			buildPhases = (A60000000000000000000002 /* Sources */, A40000000000000000000002 /* Frameworks */, A70000000000000000000002 /* Resources */,);
+			buildRules = ();
+			dependencies = (A30000000000000000000002 /* PBXTargetDependency */,);
+			name = FocusDeskTests;
+			productName = FocusDeskTests;
+			productReference = A20000000000000000000021 /* FocusDeskTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A00000000000000000000010 = {CreatedOnToolsVersion = 15.0; };
+					A00000000000000000000011 = {CreatedOnToolsVersion = 15.0; TestTargetID = A00000000000000000000010; };
+				};
+			};
+			buildConfigurationList = A90000000000000000000001;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = zh_CN;
+			hasScannedForEncodings = 0;
+			knownRegions = (zh_CN, en, Base,);
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000009 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A00000000000000000000010 /* FocusDesk */, A00000000000000000000011 /* FocusDeskTests */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A70000000000000000000001 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A70000000000000000000002 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* FocusDeskApp.swift in Sources */,
+				A10000000000000000000002 /* AppController.swift in Sources */,
+				A10000000000000000000003 /* PlanTask.swift in Sources */,
+				A10000000000000000000004 /* DefaultPlan.swift in Sources */,
+				A10000000000000000000005 /* ScheduleEngine.swift in Sources */,
+				A10000000000000000000006 /* PlanStore.swift in Sources */,
+				A10000000000000000000007 /* FloatingView.swift in Sources */,
+				A10000000000000000000008 /* PlanView.swift in Sources */,
+				A10000000000000000000009 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */, A10000000000000000000012 /* PlanValidationTests.swift in Sources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A30000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A00000000000000000000010 /* FocusDesk */; targetProxy = A30000000000000000000001; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A80000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Debug;
+		};
+		A80000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Release;
+		};
+		A80000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks",);
+				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDeskTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FocusDesk.app/Contents/MacOS/FocusDesk";
+			};
+			name = Debug;
+		};
+		A80000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks",);
+				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDeskTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FocusDesk.app/Contents/MacOS/FocusDesk";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A90000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000001 /* Debug */, A80000000000000000000002 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A90000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000003 /* Debug */, A80000000000000000000004 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A90000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000005 /* Debug */, A80000000000000000000006 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}
