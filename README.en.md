@@ -8,13 +8,19 @@ The app interface and built-in schedule are currently in Simplified Chinese. Thi
 
 ## Screenshots
 
-### Floating panel and settings
+### Desktop square
 
-The floating panel shows your current task, remaining time, and next task. Settings let you control always-on-top behavior and launch at login.
+Only a small square stays on the desktop, with a default size of 56 points. Hover over it to expand the task details. Move into the details to keep them open and use the Today's plan button. The details collapse about 250 milliseconds after the pointer leaves both areas.
 
-| Floating panel | Settings |
+<img src="docs/screenshots/compact.png" alt="FocusDesk desktop square: hover to expand task details, drag to move, and resize from the bottom-right corner" width="112">
+
+### Expanded task details and settings
+
+The expanded panel shows your current task, remaining time, and next task. Settings let you adjust the square's size, always-on-top behavior, and launch at login.
+
+| Expanded task details | Settings |
 | :---: | :---: |
-| <img src="docs/screenshots/floating.png" alt="FocusDesk floating panel showing the current task, countdown, progress, and next task" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk settings for always-on-top behavior and launch at login" width="352"> |
+| <img src="docs/screenshots/floating.png" alt="FocusDesk task details expanded on hover, showing the current task, countdown, progress, and next task" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk settings for desktop square size, always-on-top behavior, and launch at login" width="352"> |
 
 ### Today's plan
 
@@ -24,14 +30,14 @@ Browse your full schedule in chronological order. Click a task card or its penci
 
 ## Usage
 
-- On launch, the floating panel appears in the upper-right corner of the screen. Drag an empty area to move it; its position is saved.
-- The panel displays the current time block, task title, detailed instructions, remaining time, progress, and next task. Unscheduled periods appear as “自由时间” (Free time).
+- On launch, a 56-point square appears in the upper-right corner of the screen. Drag the square to move it, or drag its bottom-right corner to resize it. Its position and size are saved.
+- Hover over the square to expand the panel with the current time block, task title, detailed instructions, remaining time, progress, and next task. Unscheduled periods appear as “自由时间” (Free time). The panel stays open while the pointer is over the square or the details, so its buttons remain usable. It collapses about 250 milliseconds after the pointer leaves both areas.
 - Click “今日计划” (Today's plan) to browse the full schedule in one scrollable window. Click a task card or pencil icon to turn that card into an inline editor. Change the start time, end time, title, or details, then click “完成并保存” (Save changes), or press ⌘S. Changes are saved locally and immediately reflected in the panel.
 - Add and delete tasks in the same window. Browsing and editing do not use separate pages or editor windows.
 - Enter times in 24-hour `HH:mm` format. The end must be later than the start. For a task starting after midnight, an end time of `00:00` means the end of that day (`24:00`). Zero-length blocks, overlapping tasks, and blank titles are rejected. Adjacent blocks may share a boundary. Split other overnight tasks at midnight.
 - The schedule repeats daily. First launch includes 28 default tasks covering study, development, meals, exercise, rest, and sleep, including `00:00–08:00` for sleep and `23:00–00:00` for winding down.
-- Use the timer icon in the menu bar to show or hide the panel, open the plan or settings, or quit. FocusDesk has no Dock icon and keeps running after you close the plan window.
-- Settings include “悬浮窗始终置顶” (Always on top) and “登录 macOS 时启动” (Launch at login). The panel does not take keyboard focus. The app activates when you explicitly open the plan or settings window.
+- Use the timer icon in the menu bar to show or hide the whole desktop component, including the square and its expanded details, open the plan or settings, or quit. FocusDesk has no Dock icon and keeps running after you close the plan window.
+- In settings, use the slider to set the square's size from 32 to 112 points. Settings also include “悬浮窗始终置顶” (Always on top) and “登录 macOS 时启动” (Launch at login). Always on top applies to both the square and its details. Hovering does not take keyboard focus. The app activates when you explicitly open the plan or settings window.
 
 Task timing uses the actual system clock rather than counting timer ticks. It recalculates after wake, date changes, time-zone changes, and system-clock changes. Tasks repeat in local time. During free time, the panel shows the next task, including tomorrow's first task when appropriate.
 
@@ -125,7 +131,17 @@ Run `bash scripts/check-native.sh` for isolated native-window and persistence ch
 
 To compile the native checks without creating windows, use `bash scripts/check-native.sh --build-only`.
 
-### Recorded verification (2026-10-21)
+### Compact widget verification (2026-10-21)
+
+- The updated arm64 app was compiled and packaged as an `.app` and ZIP.
+- Isolated native checks passed 90 assertions covering compact-only startup, hover expansion and delayed collapse, keeping details open while hovered, cancelling collapse on quick reentry, widget visibility and always-on-top behavior, placement at all four screen corners, saved size and position, and existing plan persistence and recovery.
+- Synthetic mouse events verified the bottom-right resize handle: the window changed from 56 to 76 points before mouse-up in event-tracking mode, preserving its top edge. The real pointer was not moved.
+- Core checks passed again: 20 scenarios, 124 assertions, 0 failures. All four current screenshots were inspected and updated.
+- `xcodebuild` was attempted again, but full Xcode is still unavailable, so XCTest has not run. Actual pointer interaction across apps and sleep/wake still require verification in normal use. System login items were not changed.
+
+### Original release verification (2026-10-21)
+
+The results below are retained from the original release. The desktop square, expansion on hover, and saved size are later interface changes; their verification is recorded separately and is not covered by these original results.
 
 - Swift 6.3.3 in Swift 5 language mode successfully compiled the arm64 app. Release `.app` and ZIP packaging succeeded. The archive contained no Finder metadata, matched the app's files, and passed code-signature verification after extraction.
 - Foundation core checks: 20 scenarios, 124 assertions, 0 failures.
@@ -141,7 +157,7 @@ The first normal launch creates:
 ~/Library/Application Support/FocusDesk/plan.json
 ```
 
-Tasks are written atomically as JSON. The panel position and always-on-top preference use the app's `UserDefaults` domain, with bundle identifier `com.focusdesk.FocusDesk`. macOS stores the login-item state. Restarting restores the plan, position, and settings. If JSON cannot be loaded, the app preserves a timestamped backup in the same directory and displays a warning. If backup fails, saving is blocked to protect the original file.
+Tasks are written atomically as JSON. The desktop square's position, size, and always-on-top preference use the app's `UserDefaults` domain, with bundle identifier `com.focusdesk.FocusDesk`. macOS stores the login-item state. Restarting restores the plan, square position, size, and settings. If JSON cannot be loaded, the app preserves a timestamped backup in the same directory and displays a warning. If backup fails, saving is blocked to protect the original file.
 
 During development, set `FOCUSDESK_DATA_DIRECTORY` to override the plan directory. This changes only the JSON location; regular UI preferences still use the app's `UserDefaults`. Build and core-test commands do not need to launch the GUI. Repository scripts keep compiler caches and temporary files inside the project's `build/` directory.
 
@@ -149,10 +165,10 @@ During development, set `FOCUSDESK_DATA_DIRECTORY` to override the plan director
 
 ```text
 FocusDesk/
-  App/             App entry point, NSPanel, menu bar, and management windows
+  App/             App entry point, square/detail NSPanels, menu bar, management windows
   Models/          Task model, time parsing and validation, default schedule
   Services/        Scheduling, local persistence, and system integration
-  Views/           Floating panel, plan list with inline editing, settings
+  Views/           Desktop square, task details, plan list with inline editing, settings
   Resources/       Info.plist
 FocusDeskTests/    XCTest unit tests
 FocusDesk.xcodeproj/

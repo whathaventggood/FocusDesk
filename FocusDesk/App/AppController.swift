@@ -8,8 +8,28 @@ private final class DesktopPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-private final class DraggableHostingView<Content: View>: NSHostingView<Content> {
-    override var mouseDownCanMoveWindow: Bool { true }
+private final class HoverHostingView<Content: View>: NSHostingView<Content> {
+    var hoverChanged: ((Bool) -> Void)?
+    var allowsWindowDragging = false
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool { allowsWindowDragging }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect, .enabledDuringMouseDrag],
+            owner: self, userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    // Keep hover responsive while another application owns keyboard focus.
+    override func mouseEntered(with event: NSEvent) { hoverChanged?(true) }
+    override func mouseExited(with event: NSEvent) { hoverChanged?(false) }
 }
 
 /// Used only for opt-in UI checks so app preferences stay entirely in memory.
@@ -24,6 +44,7 @@ private final class SessionDefaults: UserDefaults {
     }
     override func set(_ value: Any?, forKey defaultName: String) { values[defaultName] = value }
     override func set(_ value: Bool, forKey defaultName: String) { values[defaultName] = value }
+    override func set(_ value: Double, forKey defaultName: String) { values[defaultName] = value }
 }
 
 @MainActor
@@ -41,13 +62,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         )
     }()
     private var panel: NSPanel?
+    private var compactPanel: NSPanel?
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var statusItem: NSStatusItem?
     private var visibilityMenuItem: NSMenuItem?
     private var subscriptions = Set<AnyCancellable>()
     private let panelSize = NSSize(width: 360, height: 400)
-    private let panelPositionKey = "floatingWindowPosition"
+    private let panelPositionKey = "compactWindowPosition"
+    private var compactHovered = false
+    private var detailHovered = false
+    private var pendingHide: DispatchWorkItem?
     private let isSmokeTest: Bool
 
     override init() {
@@ -62,10 +87,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         store.onToggleFloating = { [weak self] in self?.toggleFloating() }
         createMainMenu()
         createStatusItem()
-        createPanel()
+        createPanels()
 
         store.$alwaysOnTop.removeDuplicates().sink { [weak self] enabled in
             self?.panel?.level = enabled ? .floating : .normal
+            self?.compactPanel?.level = enabled ? .floating : .normal
+        }.store(in: &subscriptions)
+        store.$compactSize.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] side in
+            self?.applyCompactSize(CGFloat(PlanStore.clampedCompactSize(side)))
         }.store(in: &subscriptions)
 
         NotificationCenter.default.addObserver(
@@ -75,6 +104,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        pendingHide?.cancel()
+        pendingHide = nil
         savePanelPosition()
         store.stop()
         NotificationCenter.default.removeObserver(self)
@@ -87,33 +118,133 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         return true
     }
 
-    private func createPanel() {
-        let floating = DesktopPanel(
-            contentRect: NSRect(origin: .zero, size: panelSize),
+    private func desktopPanel(size: NSSize, title: String) -> NSPanel {
+        let window = DesktopPanel(
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false
         )
-        floating.title = "FocusDesk 悬浮窗"
-        floating.isFloatingPanel = true
-        floating.hidesOnDeactivate = false
-        floating.becomesKeyOnlyIfNeeded = true
-        floating.isReleasedWhenClosed = false
-        floating.isRestorable = false
-        floating.level = store.alwaysOnTop ? .floating : .normal
-        floating.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        floating.isMovableByWindowBackground = true
-        floating.backgroundColor = .clear
-        floating.isOpaque = false
-        floating.hasShadow = true
-        floating.animationBehavior = .utilityWindow
-        floating.delegate = self
-        floating.contentView = DraggableHostingView(rootView: FloatingView(store: store))
-        panel = floating
-        floating.setFrame(NSRect(origin: restoredPanelOrigin(), size: panelSize), display: false)
-        floating.orderFrontRegardless()
+        window.title = title
+        window.isFloatingPanel = true
+        window.hidesOnDeactivate = false
+        window.becomesKeyOnlyIfNeeded = true
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.level = store.alwaysOnTop ? .floating : .normal
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.animationBehavior = .utilityWindow
+        window.acceptsMouseMovedEvents = true
+        return window
+    }
+
+    private func createPanels() {
+        let details = desktopPanel(size: panelSize, title: "FocusDesk 悬浮窗")
+        details.isMovable = false
+        let detailHost = HoverHostingView(rootView: FloatingView(store: store))
+        detailHost.sizingOptions = []
+        detailHost.hoverChanged = { [weak self] inside in self?.setDetailHover(inside) }
+        details.contentView = detailHost
+        panel = details
+
+        let side = CGFloat(store.compactSize)
+        let compact = desktopPanel(size: NSSize(width: side, height: side), title: "FocusDesk 小方块")
+        compact.isMovableByWindowBackground = true
+        compact.delegate = self
+        let compactHost = HoverHostingView(rootView: CompactView(
+            store: store,
+            onHover: { _ in },
+            onResize: { [weak self] side in self?.resizeCompact(to: side) }
+        ))
+        compactHost.sizingOptions = []
+        compactHost.allowsWindowDragging = true
+        compactHost.hoverChanged = { [weak self] inside in self?.setCompactHover(inside) }
+        compact.contentView = compactHost
+        compactPanel = compact
+        compact.setFrame(NSRect(origin: restoredPanelOrigin(), size: NSSize(width: side, height: side)), display: false)
+        positionDetails()
+        compact.orderFrontRegardless()
         store.setFloatingVisible(true)
+        store.setExpanded(false)
+    }
+
+    func setCompactHover(_ inside: Bool) {
+        guard compactHovered != inside else { return }
+        compactHovered = inside
+        if inside {
+            expandDetails()
+        } else {
+            scheduleDetailsHide()
+        }
+    }
+
+    func setDetailHover(_ inside: Bool) {
+        guard detailHovered != inside else { return }
+        detailHovered = inside
+        if inside {
+            pendingHide?.cancel()
+            pendingHide = nil
+        } else {
+            scheduleDetailsHide()
+        }
+    }
+
+    private func expandDetails() {
+        guard store.isFloatingVisible, compactPanel?.isVisible == true else { return }
+        pendingHide?.cancel()
+        pendingHide = nil
+        positionDetails()
+        store.refresh()
+        panel?.orderFrontRegardless()
+        store.setExpanded(true)
+    }
+
+    func collapseDetails() {
+        pendingHide?.cancel()
+        pendingHide = nil
+        compactHovered = false
+        detailHovered = false
+        panel?.orderOut(nil)
+        store.setExpanded(false)
+    }
+
+    private func scheduleDetailsHide() {
+        pendingHide?.cancel()
+        pendingHide = nil
+        guard !compactHovered, !detailHovered, store.isExpanded else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.compactHovered, !self.detailHovered else { return }
+            if !self.isSmokeTest {
+                let mouse = NSEvent.mouseLocation
+                let overCompact = self.compactPanel.map { $0.isVisible && $0.frame.contains(mouse) } ?? false
+                let overDetails = self.panel.map { $0.isVisible && $0.frame.contains(mouse) } ?? false
+                guard !overCompact, !overDetails else { return }
+            }
+            self.collapseDetails()
+        }
+        pendingHide = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    func resizeCompact(to side: CGFloat) {
+        guard side.isFinite else { return }
+        let bounds = PlanStore.compactSizeRange
+        store.compactSize = min(max(Double(side), bounds.lowerBound), bounds.upperBound)
+    }
+
+    private func applyCompactSize(_ side: CGFloat) {
+        guard let compactPanel else { return }
+        let oldFrame = compactPanel.frame
+        let size = NSSize(width: side, height: side)
+        let origin = correctedOrigin(NSPoint(x: oldFrame.minX, y: oldFrame.maxY - side), size: size)
+        compactPanel.setFrame(NSRect(origin: origin, size: size), display: true)
+        positionDetails()
+        savePanelPosition()
     }
 
     @objc func showPlan() {
+        collapseDetails()
         if planWindow == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
@@ -139,6 +270,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     @objc func showSettings() {
+        collapseDetails()
         if settingsWindow == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
@@ -161,13 +293,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     @objc func toggleFloating() {
-        guard let panel else { return }
-        if panel.isVisible {
-            panel.orderOut(nil)
+        guard let compactPanel else { return }
+        collapseDetails()
+        if compactPanel.isVisible {
+            compactPanel.orderOut(nil)
             store.setFloatingVisible(false)
         } else {
             correctPanelPosition()
-            panel.orderFrontRegardless()
+            compactPanel.orderFrontRegardless()
             store.setFloatingVisible(true)
             store.refresh()
         }
@@ -179,7 +312,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func menuNeedsUpdate(_ menu: NSMenu) { updateVisibilityMenuItem() }
 
     func windowDidMove(_ notification: Notification) {
-        guard let moved = notification.object as? NSWindow, moved === panel else { return }
+        guard let moved = notification.object as? NSWindow, moved === compactPanel else { return }
+        positionDetails()
         savePanelPosition()
     }
 
@@ -188,32 +322,39 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     private func savePanelPosition() {
-        guard let panel else { return }
-        let origin = panel.frame.origin
+        guard let compactPanel else { return }
+        let origin = compactPanel.frame.origin
         store.defaults.set(["x": Double(origin.x), "y": Double(origin.y)], forKey: panelPositionKey)
     }
 
     private func restoredPanelOrigin() -> NSPoint {
+        let side = CGFloat(store.compactSize)
+        let size = NSSize(width: side, height: side)
         if let saved = store.defaults.dictionary(forKey: panelPositionKey),
            let x = saved["x"] as? Double, let y = saved["y"] as? Double,
            x.isFinite, y.isFinite {
-            return correctedOrigin(NSPoint(x: x, y: y))
+            return correctedOrigin(NSPoint(x: x, y: y), size: size)
+        }
+        if let oldPosition = store.defaults.dictionary(forKey: "floatingWindowPosition"),
+           let x = oldPosition["x"] as? Double, let y = oldPosition["y"] as? Double,
+           x.isFinite, y.isFinite {
+            return correctedOrigin(NSPoint(x: x + panelSize.width - side, y: y + panelSize.height - side), size: size)
         }
         let screen = NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return NSPoint(x: visible.maxX - panelSize.width - 20, y: visible.maxY - panelSize.height - 20)
+        return NSPoint(x: visible.maxX - side - 20, y: visible.maxY - side - 20)
     }
 
-    private func correctedOrigin(_ origin: NSPoint) -> NSPoint {
-        let proposed = NSRect(origin: origin, size: panelSize)
+    private func correctedOrigin(_ origin: NSPoint, size: NSSize) -> NSPoint {
+        let proposed = NSRect(origin: origin, size: size)
         let screens = NSScreen.screens
         let best = screens.max { left, right in
             intersectionArea(proposed, left.visibleFrame) < intersectionArea(proposed, right.visibleFrame)
         }
         let visible = (best ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSPoint(
-            x: min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - panelSize.width)),
-            y: min(max(origin.y, visible.minY), max(visible.minY, visible.maxY - panelSize.height))
+            x: min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - size.width)),
+            y: min(max(origin.y, visible.minY), max(visible.minY, visible.maxY - size.height))
         )
     }
 
@@ -223,9 +364,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     private func correctPanelPosition() {
-        guard let panel else { return }
-        panel.setFrameOrigin(correctedOrigin(panel.frame.origin))
+        guard let compactPanel else { return }
+        compactPanel.setFrameOrigin(correctedOrigin(compactPanel.frame.origin, size: compactPanel.frame.size))
+        positionDetails()
         savePanelPosition()
+    }
+
+    private func positionDetails() {
+        guard let compactPanel, let panel else { return }
+        let anchor = compactPanel.frame
+        let screen = NSScreen.screens.max { left, right in
+            intersectionArea(anchor, left.visibleFrame) < intersectionArea(anchor, right.visibleFrame)
+        } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let gap: CGFloat = 8
+        let right = anchor.maxX + gap
+        let preferredX = right + panelSize.width <= visible.maxX ? right : anchor.minX - gap - panelSize.width
+        let origin = NSPoint(
+            x: min(max(preferredX, visible.minX), max(visible.minX, visible.maxX - panelSize.width)),
+            y: min(max(anchor.maxY - panelSize.height, visible.minY), max(visible.minY, visible.maxY - panelSize.height))
+        )
+        panel.setFrameOrigin(origin)
     }
 
     private func createStatusItem() {
@@ -238,7 +397,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         menu.delegate = self
         menu.addItem(NSMenuItem(title: "FocusDesk", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
-        visibilityMenuItem = addMenuItem("隐藏悬浮窗", action: #selector(toggleFloating), to: menu)
+        visibilityMenuItem = addMenuItem("隐藏小方块", action: #selector(toggleFloating), to: menu)
         addMenuItem("今日计划…", action: #selector(showPlan), to: menu)
         addMenuItem("设置…", action: #selector(showSettings), to: menu)
         menu.addItem(.separator())
@@ -248,7 +407,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     private func updateVisibilityMenuItem() {
-        visibilityMenuItem?.title = panel?.isVisible == true ? "隐藏悬浮窗" : "显示悬浮窗"
+        visibilityMenuItem?.title = compactPanel?.isVisible == true ? "隐藏小方块" : "显示小方块"
     }
 
     @discardableResult

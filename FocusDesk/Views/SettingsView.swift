@@ -18,7 +18,30 @@ struct SettingsView: View {
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 18) {
-                        Toggle("悬浮窗始终置顶", isOn: $store.alwaysOnTop)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("桌面小方块大小")
+                                Spacer()
+                                Text("\(Int(store.compactSize)) × \(Int(store.compactSize))")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $store.compactSize, in: PlanStore.compactSizeRange, step: 1)
+                                .accessibilityLabel("桌面小方块大小")
+                            HStack {
+                                Text("32 点")
+                                Spacer()
+                                Button("恢复默认") { store.compactSize = PlanStore.defaultCompactSize }
+                                    .buttonStyle(.link)
+                                Spacer()
+                                Text("112 点")
+                            }
+                            .font(.caption)
+                        }
+                        Text("鼠标移入小方块展开任务，移出小方块与任务窗后自动收起。拖动方块移动位置，拖动右下角调整大小。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Divider()
+                        Toggle("小方块与悬浮窗始终置顶", isOn: $store.alwaysOnTop)
                         Text("开启后显示在其他应用窗口上方。关闭后仍会保留在桌面，可通过菜单栏找回。")
                             .font(.caption).foregroundStyle(.secondary)
                         Divider()
@@ -38,7 +61,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("计划与设置仅保存在本机", systemImage: "internaldrive")
                         .font(.callout.weight(.medium))
-                    Text("计划按每天的系统本地时间重复。拖动悬浮窗可调整位置，睡眠唤醒后会自动校准当前任务。")
+                    Text("计划按每天的系统本地时间重复。小方块的位置和大小会自动保存，睡眠唤醒后会自动校准当前任务。")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

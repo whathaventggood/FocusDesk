@@ -1,4 +1,112 @@
+import AppKit
 import SwiftUI
+
+struct CompactView: View {
+    @ObservedObject var store: PlanStore
+    let onHover: (Bool) -> Void
+    let onResize: (CGFloat) -> Void
+
+    private let accent = Color(red: 0.28, green: 0.40, blue: 0.87)
+    private var side: CGFloat { CGFloat(store.compactSize) }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: side * 0.24, style: .continuous)
+                .fill(.regularMaterial)
+            RoundedRectangle(cornerRadius: side * 0.24, style: .continuous)
+                .strokeBorder(accent.opacity(store.isExpanded ? 0.55 : 0.18), lineWidth: 1)
+            Circle()
+                .stroke(accent.opacity(0.13), lineWidth: max(2, side * 0.05))
+                .frame(width: side * 0.66, height: side * 0.66)
+            Circle()
+                .trim(from: 0, to: store.snapshot.progress)
+                .stroke(accent, style: StrokeStyle(lineWidth: max(2, side * 0.05), lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: side * 0.66, height: side * 0.66)
+            Image(systemName: "timer")
+                .font(.system(size: side * 0.29, weight: .medium))
+                .foregroundStyle(accent)
+            if store.errorMessage != nil {
+                Circle().fill(.orange)
+                    .frame(width: max(5, side * 0.1), height: max(5, side * 0.1))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(side * 0.11)
+            }
+        }
+        .frame(width: side, height: side)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottomTrailing) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: max(7, side * 0.13), weight: .medium))
+                .foregroundStyle(accent.opacity(0.65))
+                .frame(width: max(14, side * 0.25), height: max(14, side * 0.25))
+                .overlay(CompactResizeHandle(side: side, onResize: onResize))
+                .padding(2)
+                .accessibilityLabel("拖动调整小方块大小")
+                .accessibilityValue("\(Int(side)) 点")
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: onResize(side + 4)
+                    case .decrement: onResize(side - 4)
+                    @unknown default: break
+                    }
+                }
+        }
+        .onHover(perform: onHover)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("FocusDesk 小方块，悬停查看任务，拖动空白区域移动")
+    }
+}
+
+/// Screen coordinates keep resizing stable while the panel's own frame changes.
+private struct CompactResizeHandle: NSViewRepresentable {
+    let side: CGFloat
+    let onResize: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> ResizeHandleView {
+        ResizeHandleView(side: side, onResize: onResize)
+    }
+
+    func updateNSView(_ view: ResizeHandleView, context: Context) {
+        view.side = side
+        view.onResize = onResize
+    }
+
+    final class ResizeHandleView: NSView {
+        var side: CGFloat
+        var onResize: (CGFloat) -> Void
+        private var dragStart: NSPoint?
+        private var initialSide: CGFloat = 0
+
+        init(side: CGFloat, onResize: @escaping (CGFloat) -> Void) {
+            self.side = side
+            self.onResize = onResize
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            dragStart = window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
+            initialSide = side
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let dragStart else { return }
+            let position = window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
+            let widthChange = position.x - dragStart.x
+            let heightChange = dragStart.y - position.y
+            let change = abs(widthChange) > abs(heightChange) ? widthChange : heightChange
+            onResize(initialSide + change)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            dragStart = nil
+        }
+    }
+}
 
 struct FloatingView: View {
     @ObservedObject var store: PlanStore

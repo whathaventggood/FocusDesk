@@ -5,6 +5,9 @@ import ServiceManagement
 
 @MainActor
 final class PlanStore: ObservableObject {
+    static let defaultCompactSize = 56.0
+    static let compactSizeRange = 32.0...112.0
+
     @Published private(set) var tasks: [PlanTask]
     @Published private(set) var snapshot: ScheduleSnapshot
     @Published private(set) var now: Date
@@ -12,6 +15,15 @@ final class PlanStore: ObservableObject {
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginStatus = "未开启"
     @Published private(set) var isFloatingVisible = true
+    @Published private(set) var isExpanded = false
+
+    @Published var compactSize: Double {
+        didSet {
+            let side = Self.clampedCompactSize(compactSize)
+            if compactSize != side { compactSize = side }
+            defaults.set(side, forKey: "compactSize")
+        }
+    }
 
     @Published var alwaysOnTop: Bool {
         didSet { defaults.set(alwaysOnTop, forKey: "alwaysOnTop") }
@@ -41,6 +53,9 @@ final class PlanStore: ObservableObject {
         now = date
         snapshot = ScheduleEngine.snapshot(tasks: initialTasks, at: date)
         alwaysOnTop = defaults.object(forKey: "alwaysOnTop") as? Bool ?? true
+        compactSize = Self.clampedCompactSize(
+            defaults.object(forKey: "compactSize") as? Double ?? Self.defaultCompactSize
+        )
         loadTasks()
         refresh()
         refreshLoginStatus()
@@ -74,6 +89,15 @@ final class PlanStore: ObservableObject {
 
     func setFloatingVisible(_ visible: Bool) {
         isFloatingVisible = visible
+    }
+
+    func setExpanded(_ expanded: Bool) {
+        isExpanded = expanded
+    }
+
+    static func clampedCompactSize(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultCompactSize }
+        return min(compactSizeRange.upperBound, max(compactSizeRange.lowerBound, value))
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
