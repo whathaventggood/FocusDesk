@@ -1,5 +1,7 @@
 # FocusDesk
 
+**简体中文** | [English](README.en.md)
+
 面向 Apple Silicon Mac 的原生桌面专注计划应用，使用 Swift、SwiftUI、AppKit 和本地 JSON。最低系统为 macOS 13，不需要服务器、数据库或第三方依赖。
 
 ## 界面展示
