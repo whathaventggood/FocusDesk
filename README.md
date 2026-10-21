@@ -2,6 +2,22 @@
 
 面向 Apple Silicon Mac 的原生桌面专注计划应用，使用 Swift、SwiftUI、AppKit 和本地 JSON。最低系统为 macOS 13，不需要服务器、数据库或第三方依赖。
 
+## 界面展示
+
+### 桌面悬浮窗与设置
+
+悬浮窗显示当前任务、剩余时间和下一项任务；设置中可调整置顶与登录启动。
+
+| 桌面悬浮窗 | 设置 |
+| :---: | :---: |
+| <img src="docs/screenshots/floating.png" alt="FocusDesk 桌面悬浮窗：当前任务、倒计时、进度与下一项任务" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk 设置：悬浮窗置顶与登录时启动" width="352"> |
+
+### 今日计划
+
+按时间顺序浏览全天任务。点击任务卡片或铅笔图标，即可在原位置编辑，完成后立即保存并同步悬浮窗。
+
+<img src="docs/screenshots/plan.png" alt="FocusDesk 今日计划：在同一窗口中浏览、编辑、新增和删除任务" width="900">
+
 ## 使用
 
 - 启动后，悬浮窗默认出现在屏幕右上角；拖动空白区域可移动，位置会保存。
@@ -138,4 +154,5 @@ FocusDeskTests/ XCTest 单元测试
 FocusDesk.xcodeproj/
 Package.swift   独立核心逻辑测试入口
 scripts/        本机 .app 构建脚本
+docs/screenshots/ README 界面截图
 ```
