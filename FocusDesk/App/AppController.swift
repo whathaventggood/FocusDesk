@@ -65,6 +65,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var compactPanel: NSPanel?
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var historyWindow: NSWindow?
     private var statusItem: NSStatusItem?
     private var visibilityMenuItem: NSMenuItem?
     private var subscriptions = Set<AnyCancellable>()
@@ -84,6 +85,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func applicationDidFinishLaunching(_ notification: Notification) {
         store.onShowPlan = { [weak self] in self?.showPlan() }
         store.onShowSettings = { [weak self] in self?.showSettings() }
+        store.onShowHistory = { [weak self] in self?.showHistory() }
         store.onToggleFloating = { [weak self] in self?.toggleFloating() }
         createMainMenu()
         createStatusItem()
@@ -292,6 +294,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
+    @objc func showHistory() {
+        collapseDetails()
+        if historyWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 700),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
+            )
+            window.title = "专注记录 · FocusDesk"
+            window.minSize = NSSize(width: 680, height: 540)
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.titlebarAppearsTransparent = true
+            window.contentView = NSHostingView(rootView: HistoryView(store: store))
+            window.center()
+            historyWindow = window
+        }
+        store.refresh()
+        NSApp.activate(ignoringOtherApps: true)
+        historyWindow?.makeKeyAndOrderFront(nil)
+    }
+
     @objc func toggleFloating() {
         guard let compactPanel else { return }
         collapseDetails()
@@ -399,6 +422,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         menu.addItem(.separator())
         visibilityMenuItem = addMenuItem("隐藏小方块", action: #selector(toggleFloating), to: menu)
         addMenuItem("今日计划…", action: #selector(showPlan), to: menu)
+        addMenuItem("专注记录…", action: #selector(showHistory), to: menu)
         addMenuItem("设置…", action: #selector(showSettings), to: menu)
         menu.addItem(.separator())
         addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: menu)
@@ -423,6 +447,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "FocusDesk")
         addMenuItem("今日计划…", action: #selector(showPlan), key: "1", to: appMenu)
+        addMenuItem("专注记录…", action: #selector(showHistory), key: "2", to: appMenu)
         addMenuItem("设置…", action: #selector(showSettings), key: ",", to: appMenu)
         appMenu.addItem(.separator())
         addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: appMenu)

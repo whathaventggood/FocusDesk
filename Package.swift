@@ -10,7 +10,7 @@ let package = Package(
             name: "FocusDeskCore",
             path: "FocusDesk",
             exclude: ["App", "Views", "Resources", "Services/PlanStore.swift"],
-            sources: ["Models", "Services/ScheduleEngine.swift"]
+            sources: ["Models", "Services/ScheduleEngine.swift", "Services/ProgressStore.swift"]
         ),
         .testTarget(name: "FocusDeskCoreTests", dependencies: ["FocusDeskCore"], path: "FocusDeskTests")
     ]

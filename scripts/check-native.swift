@@ -33,7 +33,7 @@ private enum NativeSmoke {
 
         // Only this opt-in harness uses these overrides. No system login item is changed.
         setenv("FOCUSDESK_SMOKE_TEST", "1", 1)
-        setenv("FOCUSDESK_DATA_DIRECTORY", output.appendingPathComponent("app-data").path, 1)
+        setenv("FOCUSDESK_DATA_DIRECTORY", output.appendingPathComponent("app-data-\(UUID().uuidString)").path, 1)
         let application = NSApplication.shared
         let controller = AppController()
         application.delegate = controller
@@ -75,6 +75,8 @@ private enum NativeSmoke {
         let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false)
         defer { store.stop() }
         try require(store.tasks.isEmpty, "Empty JSON plan should remain empty")
+        let migrated = try JSONDecoder().decode(ProgressDocument.self, from: Data(contentsOf: url))
+        try require(migrated.tasks.isEmpty && migrated.history.count == 1, "Legacy task array should migrate with today's empty record")
         try require(store.compactSize == PlanStore.defaultCompactSize, "Compact square should default to 56 points")
         try require(!store.isExpanded, "Detail visibility should not be restored across launches")
 
@@ -84,6 +86,9 @@ private enum NativeSmoke {
         try require(store.saveTask(first) == nil, "Adding an adjacent task failed")
         try require(store.tasks.map(\.startMinutes) == [540, 600], "Plan must remain sorted")
         try require(store.tasks.first?.title == "任务一", "Task title should trim surrounding whitespace")
+        try require(store.todayProgress.totalCount == 2 && store.todayProgress.completedCount == 0, "Today's progress should track saved tasks")
+        try require(store.toggleTaskCompletion(id: first.id) == nil, "Marking today's task complete failed")
+        try require(store.isTaskCompleted(first.id) && store.todayProgress.completedCount == 1, "Completion did not update immediately")
         let beforeConflict = try Data(contentsOf: url)
         let conflict = PlanTask(startMinutes: 570, endMinutes: 630, title: "冲突任务", details: "")
         try require(store.saveTask(conflict) != nil, "Overlapping task should be rejected")
@@ -98,6 +103,7 @@ private enum NativeSmoke {
         let reloaded = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false)
         defer { reloaded.stop() }
         try require(reloaded.tasks == store.tasks, "JSON plan did not survive reloading")
+        try require(reloaded.isTaskCompleted(first.id), "Completion did not survive reloading")
         try require(!reloaded.alwaysOnTop, "Preferences did not survive reloading")
         try require(reloaded.compactSize == 74, "Compact square size did not survive reloading")
         try require(!reloaded.isExpanded, "A reopened app should start with its detail panel hidden")
@@ -110,8 +116,39 @@ private enum NativeSmoke {
         reloaded.compactSize = .infinity
         try require(reloaded.compactSize == PlanStore.defaultCompactSize, "Infinite square sizes must recover to the default")
         try require(reloaded.deleteTask(id: second.id) == nil, "Deleting a task failed")
-        let persisted = try JSONDecoder().decode([PlanTask].self, from: Data(contentsOf: url))
-        try require(persisted.count == 1 && persisted.first?.id == first.id, "Deleted task remained in JSON")
+        let persisted = try JSONDecoder().decode(ProgressDocument.self, from: Data(contentsOf: url))
+        try require(persisted.tasks.count == 1 && persisted.tasks.first?.id == first.id, "Deleted task remained in JSON")
+        try require(persisted.history.first?.completedCount == 1 && persisted.history.first?.totalCount == 1, "Completion should survive plan edits by task ID")
+
+        let rolloverDirectory = output.appendingPathComponent("rollover-\(UUID().uuidString)", isDirectory: true)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        var simulatedNow = calendar.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 23, minute: 59))!
+        let rollover = PlanStore(
+            storageDirectory: rolloverDirectory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+            nowProvider: { simulatedNow }, calendarProvider: { calendar }, startClock: false
+        )
+        defer { rollover.stop() }
+        let completedID = rollover.tasks[0].id
+        try require(rollover.toggleTaskCompletion(id: completedID) == nil, "Completion before midnight failed")
+        let yesterday = rollover.todayProgress
+        simulatedNow = calendar.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 0, minute: 1))!
+        rollover.refresh()
+        try require(rollover.todayProgress.day != yesterday.day && rollover.todayProgress.completedCount == 0, "A new local day should reset completion")
+        try require(rollover.history.first(where: { $0.day == yesterday.day })?.completedCount == 1, "Midnight rollover should preserve yesterday's result")
+        let editedToday = PlanTask(startMinutes: 540, endMinutes: 600, title: "今日新增", details: "历史保持原样")
+        let revised = try PlanEditing.replacingConflicts(with: editedToday, in: rollover.tasks)
+        try require(rollover.replaceTasks(revised) == nil, "Confirmed conflict replacement should commit in one save")
+        try require(rollover.tasks.contains(where: { $0.id == editedToday.id }), "The replacement task did not enter today's plan")
+        try require(rollover.history.first(where: { $0.day == yesterday.day }) == yesterday, "Editing today's plan should not rewrite yesterday")
+        let savedRevision = try JSONDecoder().decode(ProgressDocument.self, from: Data(contentsOf: rollover.storageURL))
+        try require(savedRevision.tasks == rollover.tasks && savedRevision.history == rollover.history, "Conflict replacement and progress must persist together")
+        let rolloverReloaded = PlanStore(
+            storageDirectory: rolloverDirectory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+            nowProvider: { simulatedNow }, calendarProvider: { calendar }, startClock: false
+        )
+        defer { rolloverReloaded.stop() }
+        try require(rolloverReloaded.history.first(where: { $0.day == yesterday.day })?.completedCount == 1, "Historical completion did not survive relaunch")
 
         let damagedDirectory = output.appendingPathComponent("corrupt-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: damagedDirectory, withIntermediateDirectories: true)
@@ -127,9 +164,13 @@ private enum NativeSmoke {
             .filter { $0.lastPathComponent.hasPrefix("plan.corrupt-") }
         try require(backups.count == 1, "Damaged JSON was not backed up")
         try require(try Data(contentsOf: backups[0]) == damaged, "Backup must preserve the original bytes")
-        try require(recovered.deleteTask(id: recovered.tasks[0].id) == nil, "Recovery should allow saving after a backup")
-        _ = try JSONDecoder().decode([PlanTask].self, from: Data(contentsOf: damagedURL))
-        print("PASS: save/reload, rejected edits, deletion, compact size preferences, damaged-file backup")
+        try require(recovered.needsDataRecovery, "A damaged file must require explicit recovery")
+        try require(recovered.deleteTask(id: recovered.tasks[0].id) != nil, "Damaged data should block ordinary edits")
+        try require(try Data(contentsOf: damagedURL) == damaged, "Blocked edits must not replace the damaged original")
+        try require(recovered.recoverWithDefaultPlan() == nil, "Explicit recovery should save a fresh default plan")
+        try require(!recovered.needsDataRecovery, "Recovery should clear the blocked state")
+        _ = try JSONDecoder().decode(ProgressDocument.self, from: Data(contentsOf: damagedURL))
+        print("PASS: migration, completion/reload, rollover history, rejected edits, compact size, explicit damaged-file recovery")
     }
 
     @MainActor
@@ -170,6 +211,10 @@ private enum NativeSmoke {
         try verifyPlacement(controller: controller, compact: compact, detail: detail)
         controller.resizeCompact(to: CGFloat(PlanStore.defaultCompactSize))
         controller.setCompactHover(true)
+        if let current = controller.store.snapshot.current {
+            try require(controller.store.toggleTaskCompletion(id: current.id) == nil, "Completing the current task from the widget should save")
+            try require(controller.store.isTaskCompleted(current.id), "Widget completion should update today's progress")
+        }
         try writePreview(detail, to: output.appendingPathComponent("floating.png"))
         controller.collapseDetails()
 
@@ -202,9 +247,15 @@ private enum NativeSmoke {
         try require(settings.count == 1, "Opening settings twice should reuse the same window")
         try require((settings[0].contentView?.bounds.height ?? 0) >= 520, "Settings content is too short and may clip")
         try writePreview(settings[0], to: output.appendingPathComponent("settings.png"))
+        controller.showHistory()
+        controller.showHistory()
+        let history = NSApp.windows.filter { $0.title == "专注记录 · FocusDesk" }
+        try require(history.count == 1, "Opening history twice should reuse the same window")
+        try require(history[0].isVisible && history[0].canBecomeKey, "History should open as a readable native window")
+        try writePreview(history[0], to: output.appendingPathComponent("history.png"))
         controller.store.setLaunchAtLogin(true)
         try require(controller.store.errorMessage?.contains("测试模式") == true, "Smoke mode must block system login-item changes")
-        print("PASS: nonactivating compact/detail panels, hover transitions, resize, geometry, reusable plan/settings windows")
+        print("PASS: nonactivating compact/detail panels, hover transitions, resize, geometry, reusable plan/settings/history windows")
     }
 
     @MainActor

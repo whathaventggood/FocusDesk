@@ -2,177 +2,134 @@
 
 [简体中文](README.md) | **English**
 
-A native desktop focus planner for Apple Silicon Macs, built with Swift, SwiftUI, AppKit, and local JSON storage. Requires macOS 13 or later. No server, database, or third-party dependencies.
+[![macOS CI](https://github.com/whathaventggood/FocusDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/whathaventggood/FocusDesk/actions/workflows/ci.yml)
 
-The app interface and built-in schedule are currently in Simplified Chinese. This document provides English usage and development instructions.
+A native desktop focus manager for Apple Silicon Macs, built with Swift, SwiftUI, AppKit, and local JSON storage. Requires macOS 13 or later. No server, database, or third-party dependencies. The app interface and built-in schedule are currently in Simplified Chinese.
+
+[Installation](docs/INSTALL.md#english) · [Changelog](CHANGELOG.md) · [Release process](docs/RELEASING.md) · [GitHub Releases](https://github.com/whathaventggood/FocusDesk/releases)
 
 ## Screenshots
 
 ### Desktop square
 
-Only a small square stays on the desktop, with a default size of 56 points. Hover over it to expand the task details. Move into the details to keep them open and use the Today's plan button. The details collapse about 250 milliseconds after the pointer leaves both areas.
+A small 56-point square stays on the desktop. Hover to expand task details, move into the details to keep them open, and move outside both areas to collapse.
 
-<img src="docs/screenshots/compact.png" alt="FocusDesk desktop square: hover to expand task details, drag to move, and resize from the bottom-right corner" width="112">
+<img src="docs/screenshots/compact.png" alt="FocusDesk desktop square with hover expansion, dragging, and resizing" width="112">
 
-### Expanded task details and settings
-
-The expanded panel shows your current task, remaining time, and next task. Settings let you adjust the square's size, always-on-top behavior, and launch at login.
+### Task details and settings
 
 | Expanded task details | Settings |
 | :---: | :---: |
-| <img src="docs/screenshots/floating.png" alt="FocusDesk task details expanded on hover, showing the current task, countdown, progress, and next task" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk settings for desktop square size, always-on-top behavior, and launch at login" width="352"> |
+| <img src="docs/screenshots/floating.png" alt="Current task, remaining time, progress, and next task" width="320"> | <img src="docs/screenshots/settings.png" alt="Square size, always on top, and launch at login settings" width="352"> |
 
 ### Today's plan
 
-Browse your full schedule in chronological order. Click a task card or its pencil icon to edit it in place. Saving immediately updates the floating panel.
+Browse the full day in start-time order. Edit, add, delete, and mark tasks complete in the same window.
 
-<img src="docs/screenshots/plan.png" alt="FocusDesk daily plan with browsing, editing, adding, and deleting tasks in one window" width="900">
+<img src="docs/screenshots/plan.png" alt="Today's plan with viewing and editing in the same window" width="900">
+
+### Focus history
+
+Review completion rates by date and each day's task snapshot.
+
+<img src="docs/screenshots/history.png" alt="FocusDesk history showing daily completion rates and task snapshots" width="900">
 
 ## Usage
 
-- On launch, a 56-point square appears in the upper-right corner of the screen. Drag the square to move it, or drag its bottom-right corner to resize it. Its position and size are saved.
-- Hover over the square to expand the panel with the current time block, task title, detailed instructions, remaining time, progress, and next task. Unscheduled periods appear as “自由时间” (Free time). The panel stays open while the pointer is over the square or the details, so its buttons remain usable. It collapses about 250 milliseconds after the pointer leaves both areas.
-- Click “今日计划” (Today's plan) to browse the full schedule in one scrollable window. Click a task card or pencil icon to turn that card into an inline editor. Change the start time, end time, title, or details, then click “完成并保存” (Save changes), or press ⌘S. Changes are saved locally and immediately reflected in the panel.
-- Add and delete tasks in the same window. Browsing and editing do not use separate pages or editor windows.
-- Enter times in 24-hour `HH:mm` format. The end must be later than the start. For a task starting after midnight, an end time of `00:00` means the end of that day (`24:00`). Zero-length blocks, overlapping tasks, and blank titles are rejected. Adjacent blocks may share a boundary. Split other overnight tasks at midnight.
-- The schedule repeats daily. First launch includes 28 default tasks covering study, development, meals, exercise, rest, and sleep, including `00:00–08:00` for sleep and `23:00–00:00` for winding down.
-- Use the timer icon in the menu bar to show or hide the whole desktop component, including the square and its expanded details, open the plan or settings, or quit. FocusDesk has no Dock icon and keeps running after you close the plan window.
-- In settings, use the slider to set the square's size from 32 to 112 points. Settings also include “悬浮窗始终置顶” (Always on top) and “登录 macOS 时启动” (Launch at login). Always on top applies to both the square and its details. Hovering does not take keyboard focus. The app activates when you explicitly open the plan or settings window.
+- **Desktop square:** drag to move, or drag the bottom-right corner to resize. The default size is 56 points; Settings allows 32–112 points. Size and position persist. Hover expansion does not take keyboard focus.
+- **Current task:** shows its time range, title, details, remaining time, elapsed-time progress, and next task. Gaps show “自由时间” (free time). Elapsed-time progress is separate from completion.
+- **Today's plan:** click a task card or pencil to edit its time, title, and details in place. “完成并保存” (save, ⌘S) persists the change and updates the desktop view. Viewing and editing share one management window.
+- **Conflict handling:** new tasks prefer available gaps. A fully booked day still allows an empty-time draft. Overlaps list the affected tasks and available gaps. Change the time, use a suggested gap, or preview replacing the occupied interval while preserving uncovered portions of the original tasks. Replacement requires explicit confirmation before atomic saving.
+- **Completion:** manually check or uncheck tasks; completion survives restart. Reaching an end time never automatically marks a task complete.
+- **History:** inspect the last 7 days, 30 days, or all recorded days. Completion rate is completed task count divided by planned task count, including breaks and sleep. Range totals are weighted by total task count, rather than averaging daily percentages. Days without records are omitted rather than recorded as zero.
+- **Daily schedule:** repeats each day. Today's edits update today's snapshot. Past task names, times, and completion states retain their snapshots. Day changes and wake events recalculate from the actual local date and system clock.
+- **Menu bar:** show or hide the desktop component, open the plan, focus history, and settings, or quit. The app has no Dock icon and keeps running when management windows close.
+- **Settings:** always on top and launch at login. Login startup uses `SMAppService.mainApp`; install the app in a stable location and enable it yourself.
 
-Task timing uses the actual system clock rather than counting timer ticks. It recalculates after wake, date changes, time-zone changes, and system-clock changes. Tasks repeat in local time. During free time, the panel shows the next task, including tomorrow's first task when appropriate.
+Times use 24-hour `HH:mm` format. End time must be later than start time; an end of `00:00` means the end of the day (24:00). Zero duration, malformed time, empty titles, and unconfirmed overlaps are rejected. Adjacent tasks may share a boundary. First launch includes 28 study and daily-life tasks.
+
+## Install and update
+
+Download a ZIP from [Releases](https://github.com/whathaventggood/FocusDesk/releases), check that version's signing disclosure and SHA-256, extract it, and move `FocusDesk.app` into Applications. See [installation instructions](docs/INSTALL.md#english) for first launch, system warnings, updates, and backup.
+
+Local builds and CI previews use **ad-hoc signing, which is not Developer ID signing or Apple notarization**. Each release discloses its actual status. Optional Developer ID signing and notarization are supported; without configured credentials, the workflow can prepare a clearly labeled community-build draft.
 
 ## Run from Xcode
 
-1. Install the full Xcode 15 or later and open `FocusDesk.xcodeproj`.
-2. Select the **FocusDesk** scheme and **My Mac** as the run destination.
-3. Run with ⌘R. If signing requires configuration, choose your development team under the target's **Signing & Capabilities**, or select **Sign to Run Locally** for local development.
-4. Run unit tests with **Product → Test** (⌘U). The shared scheme includes `FocusDeskTests`.
+1. Install full Xcode 15 or later, open it, and finish installing its components.
+2. Open `FocusDesk.xcodeproj`, select **FocusDesk → My Mac**, and press **⌘R**.
+3. If prompted about signing, choose **Sign to Run Locally** or your development team.
+4. Press **⌘U** to run `FocusDeskTests` in the shared scheme.
 
-The project uses Swift 5 language mode and can be built with a newer Swift compiler. It does not download external Swift packages. `Package.swift` exists only for independent testing of scheduling and validation logic; run the desktop app from the `.xcodeproj`.
+The project uses Swift 5 language mode and targets macOS 13. Run the actual desktop app from `.xcodeproj`; `Package.swift` is only for headless model and persistence tests.
 
-## Build an .app
+## Build and package
 
-### With full Xcode
-
-Choose **Product → Archive** in Xcode and export a macOS app through Organizer, or run this from the project root:
-
-```sh
-mkdir -p build/tmp
-TMPDIR="$PWD/build/tmp/" xcodebuild \
-  -project FocusDesk.xcodeproj \
-  -scheme FocusDesk \
-  -configuration Release \
-  -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath "$PWD/build/DerivedData" \
-  CLANG_MODULE_CACHE_PATH="$PWD/build/ModuleCache" \
-  CODE_SIGN_IDENTITY=- build
-```
-
-The output is `build/DerivedData/Build/Products/Release/FocusDesk.app`. Open it locally or copy it to Applications. Distribution to other users requires appropriate signing and notarization with your own Developer ID.
-
-### With Command Line Tools only
-
-The repository includes a script that builds directly with the system Swift compiler, targeting the arm64 architecture used by the MacBook Air M1:
+Command Line Tools can build the local arm64 app:
 
 ```sh
 ./scripts/build-app.sh Release
 ```
 
-Outputs are `build/Release/FocusDesk.app` and `build/Release/FocusDesk.zip`. The script applies an ad-hoc signature for local use and verifies it before packaging. The ZIP omits Finder extended attributes. The script builds without launching the app. For a debug build, use `./scripts/build-app.sh Debug`.
+Outputs: `build/Release/FocusDesk.app`, `FocusDesk.zip`, and `SHA256SUMS.txt`. This is an ad-hoc signed, unnotarized local build. The script does not launch the app or register login items.
 
-In the original development environment, the project was in a synced Desktop folder. Its file provider was observed reattaching `com.apple.FinderInfo` to the `.app` after signing, affecting later signature checks. If this happens, extract `FocusDesk.zip` into a folder outside sync, such as Applications, before running it. The script clears extended attributes only from generated project output; it does not change file-provider or system settings.
-
-Launch at login uses macOS `SMAppService.mainApp`. Move the app to a stable location in Applications before enabling it. If macOS requires approval, allow FocusDesk under **System Settings → General → Login Items**. Building the app does not register a login item.
-
-## Testing
-
-Tests cover task matching, exact boundaries, the next task across midnight, remaining time and progress, free time, input formats, conflicting time blocks, and default-schedule integrity.
-
-With full Xcode:
+With full Xcode, run real XCTest and produce a versioned candidate:
 
 ```sh
-mkdir -p build/tmp
-TMPDIR="$PWD/build/tmp/" xcodebuild \
-  -project FocusDesk.xcodeproj \
-  -scheme FocusDesk \
-  -configuration Debug \
-  -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath "$PWD/build/DerivedData" \
-  CLANG_MODULE_CACHE_PATH="$PWD/build/ModuleCache" \
-  CODE_SIGN_IDENTITY=- test
+./scripts/package-release.sh
 ```
 
-You can also run the core unit tests through Swift Package Manager:
+Outputs in `build/release/` include `FocusDesk-2.1.0-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
+
+## Tests and CI
 
 ```sh
-mkdir -p build/tmp
-TMPDIR="$PWD/build/tmp/" \
-CLANG_MODULE_CACHE_PATH="$PWD/build/ModuleCache" \
-SWIFT_MODULECACHE_PATH="$PWD/build/ModuleCache" \
-swift test --disable-sandbox \
-  --scratch-path build/swift-test \
-  --cache-path build/PackageCache \
-  --config-path build/PackageConfig \
-  --security-path build/PackageSecurity \
-  --manifest-cache local
+./scripts/test-xcode.sh
 ```
 
-A Command Line Tools installation may lack XCTest. The app can compile in that environment, but `xcodebuild` and XCTest require full Xcode. A test blocked by that limitation has not passed.
+This executes `xcodebuild build test` against the app-hosted XCTest target and preserves `build/TestResults/*.xcresult` and logs. Test environments use project-local data and in-memory preferences to protect everyday plans. With only Command Line Tools the script fails explicitly; smoke checks do not stand in for XCTest.
 
-For a Foundation-based check without XCTest, run:
+Tests cover time matching and boundaries, remaining time, free time, midnight, input validation, conflict replacement, completion and undo, date changes, historical snapshots, legacy JSON migration, atomic persistence, and corrupt-file protection.
+
+GitHub Actions runs the same Xcode tests for `main` pushes, pull requests, and manual dispatches, retaining reports, logs, and an arm64 preview ZIP. A version tag triggers the release workflow; only successful tests allow creation of a **draft release**, which a maintainer reviews before publishing. **Adding CI configuration is not evidence of a passing CI run.** Check Actions for the exact commit.
+
+Local validation status: 27 Foundation cases (151 assertions), 112 native-window checks, and the arm64 Release build/signature verification passed. This Mac has Command Line Tools rather than full Xcode. Real XCTest still requires full Xcode or CI after pushing; these checks do not replace it.
+
+Optional checks:
 
 ```sh
 bash scripts/check-core.sh
+bash scripts/check-native.sh
 ```
 
-This script compiles the production core files and checks scenarios corresponding to the unit tests, including task matching, remaining time, cross-day behavior, and conflicts. Caches and output stay inside the project's `build/` directory. These checks do not replace XCTest or UI acceptance testing. The shared Xcode scheme isolates test data in `build/XCTestData` and uses in-memory preferences to avoid overwriting your regular plan.
+Native checks require a desktop session with WindowServer access; use `bash scripts/check-native.sh --build-only` to compile without opening test windows. Cross-app hovering, dragging, resizing, and actual sleep/wake still need manual acceptance testing.
 
-Run `bash scripts/check-native.sh` for isolated native-window and persistence checks. It uses project-local test data and in-memory preferences, without launching your regular app or registering a login item. Window previews are saved to `build/native-smoke/`. This check requires a desktop session with WindowServer access; a restricted sandbox may block it. Switching apps, dragging the panel, and actual sleep/wake behavior still need manual verification in normal use.
-
-To compile the native checks without creating windows, use `bash scripts/check-native.sh --build-only`.
-
-### Compact widget verification (2026-10-21)
-
-- The updated arm64 app was compiled and packaged as an `.app` and ZIP.
-- Isolated native checks passed 90 assertions covering compact-only startup, hover expansion and delayed collapse, keeping details open while hovered, cancelling collapse on quick reentry, widget visibility and always-on-top behavior, placement at all four screen corners, saved size and position, and existing plan persistence and recovery.
-- Synthetic mouse events verified the bottom-right resize handle: the window changed from 56 to 76 points before mouse-up in event-tracking mode, preserving its top edge. The real pointer was not moved.
-- Core checks passed again: 20 scenarios, 124 assertions, 0 failures. All four current screenshots were inspected and updated.
-- `xcodebuild` was attempted again, but full Xcode is still unavailable, so XCTest has not run. Actual pointer interaction across apps and sleep/wake still require verification in normal use. System login items were not changed.
-
-### Original release verification (2026-10-21)
-
-The results below are retained from the original release. The desktop square, expansion on hover, and saved size are later interface changes; their verification is recorded separately and is not covered by these original results.
-
-- Swift 6.3.3 in Swift 5 language mode successfully compiled the arm64 app. Release `.app` and ZIP packaging succeeded. The archive contained no Finder metadata, matched the app's files, and passed code-signature verification after extraction.
-- Foundation core checks: 20 scenarios, 124 assertions, 0 failures.
-- Isolated native checks passed for launch without activating the app or taking focus, NSPanel configuration, visibility and always-on-top changes, plan/settings window reuse, persistence and reload, rejected edits leaving files unchanged, deletion, and corrupt-JSON backups. Three window previews were visually inspected.
-- `xcodebuild build` and `xcodebuild test` were attempted. The machine had only Command Line Tools, without full Xcode or XCTest, so XCTest could not run. The Foundation and native checks are reported separately from XCTest.
-- Regular login items, manual dragging across applications, and actual sleep/wake were not exercised. Those behaviors still require verification in normal use.
-
-## Data
-
-The first normal launch creates:
+## Data and backup
 
 ```text
 ~/Library/Application Support/FocusDesk/plan.json
 ```
 
-Tasks are written atomically as JSON. The desktop square's position, size, and always-on-top preference use the app's `UserDefaults` domain, with bundle identifier `com.focusdesk.FocusDesk`. macOS stores the login-item state. Restarting restores the plan, square position, size, and settings. If JSON cannot be loaded, the app preserves a timestamped backup in the same directory and displays a warning. If backup fails, saving is blocked to protect the original file.
+One versioned JSON document atomically stores the repeating plan and daily history. Legacy task-array files migrate on the first successful save. Back up before upgrading; downgrading requires restoring a compatible backup. Current-day edits reconcile today's snapshot, while past snapshots remain unchanged.
 
-During development, set `FOCUSDESK_DATA_DIRECTORY` to override the plan directory. This changes only the JSON location; regular UI preferences still use the app's `UserDefaults`. Build and core-test commands do not need to launch the GUI. Repository scripts keep compiler caches and temporary files inside the project's `build/` directory.
+Unreadable data is backed up and saving stops with a recovery message, protecting history from silent replacement. Window position, size, and always-on-top preferences use the `com.focusdesk.FocusDesk` UserDefaults domain. macOS stores the login-item state. There is no server and plans are not uploaded.
+
+Developers can set `FOCUSDESK_DATA_DIRECTORY` to override the JSON directory. Compiler caches, test reports, and script temporary files remain inside the project's `build/` directory. See [installation instructions](docs/INSTALL.md#english) for backup and recovery.
 
 ## Project structure
 
 ```text
 FocusDesk/
-  App/             App entry point, square/detail NSPanels, menu bar, management windows
-  Models/          Task model, time parsing and validation, default schedule
-  Services/        Scheduling, local persistence, and system integration
-  Views/           Desktop square, task details, plan list with inline editing, settings
-  Resources/       Info.plist
-FocusDeskTests/    XCTest unit tests
+  App/          Entry point, NSPanels, menu bar, and management windows
+  Models/       Tasks, validation, conflict replacement, daily snapshots
+  Services/     Scheduling, atomic JSON persistence, system integration
+  Views/        Square, details, inline plan editor, history, settings
+  Resources/    Info.plist
+FocusDeskTests/ XCTest
 FocusDesk.xcodeproj/
-Package.swift      Standalone core-test entry point
-scripts/          Local app build and verification scripts
-docs/screenshots/ README screenshots
+Package.swift   Headless logic-test entry point
+scripts/        Build, Xcode test, and release-candidate scripts
+.github/workflows/ CI and draft releases
+CHANGELOG.md
+docs/           Installation, release instructions, screenshots
 ```

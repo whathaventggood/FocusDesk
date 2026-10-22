@@ -1,0 +1,51 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and XCTest (Apple Silicon)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          uname -m
+          xcodebuild -version
+          swift --version
+      - name: Build app and run real XCTest
+        run: ./scripts/test-xcode.sh
+      - name: Package local preview
+        run: ./scripts/build-app.sh Release
+      - name: Retain XCTest result bundle and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: XCTest-${{ github.run_id }}
+          path: build/TestResults/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Retain ad-hoc signed preview (not notarized)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: FocusDesk-arm64-preview
+          path: |
+            build/Release/FocusDesk.zip
+            build/Release/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error

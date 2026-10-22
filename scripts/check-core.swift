@@ -249,6 +249,102 @@ private struct ScheduleEngineTests {
     }
 }
 
+private struct PlanEditingChecks {
+    private func task(_ start: Int, _ end: Int, title: String = "原任务") -> PlanTask {
+        PlanTask(startMinutes: start, endMinutes: end, title: title, details: "原说明")
+    }
+
+    func testFullDefaultDayOffersNoFreeSlot() {
+        CoreCheck.equal(PlanEditing.freeSlots(in: DefaultPlan.tasks), [])
+        CoreCheck.equal(PlanEditing.conflicts(for: task(540, 550), in: DefaultPlan.tasks).count, 1)
+    }
+
+    func testFreeSlotAndAdjacentEdit() {
+        let first = task(540, 600)
+        let second = task(660, 720)
+        CoreCheck.equal(PlanEditing.freeSlots(in: [first, second]), [
+            PlanTimeSlot(startMinutes: 0, endMinutes: 540),
+            PlanTimeSlot(startMinutes: 600, endMinutes: 660),
+            PlanTimeSlot(startMinutes: 720, endMinutes: 1_440)
+        ])
+        CoreCheck.equal(PlanEditing.draft(in: [first, second], at: 600).startMinutes, 600)
+        CoreCheck.equal(PlanEditing.conflicts(for: task(600, 660), in: [first, second]), [])
+    }
+
+    func testReplacementKeepsFragmentsAndUniqueIDs() throws {
+        let original = task(540, 600)
+        let incoming = task(550, 570, title: "插入")
+        let result = try PlanEditing.replacingConflicts(with: incoming, in: [original])
+        CoreCheck.equal(result.map(\.startMinutes), [540, 550, 570])
+        CoreCheck.equal(result.map(\.endMinutes), [550, 570, 600])
+        CoreCheck.equal(result[0].id, original.id)
+        CoreCheck.record(result[2].id != original.id, "The split right fragment needs a distinct ID", file: #filePath, line: #line)
+        CoreCheck.nilValue(PlanValidator.validate(result))
+    }
+
+    func testInvalidReplacementLeavesOriginalUntouched() {
+        let base = [task(540, 600)]
+        do {
+            _ = try PlanEditing.replacingConflicts(with: task(590, 580), in: base)
+            CoreCheck.record(false, "Invalid replacement should throw", file: #filePath, line: #line)
+        } catch {
+            CoreCheck.equal(base[0].startMinutes, 540)
+            CoreCheck.equal(base[0].endMinutes, 600)
+        }
+    }
+}
+
+private struct ProgressChecks {
+    private var calendar: Calendar {
+        var result = Calendar(identifier: .gregorian)
+        result.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        return result
+    }
+
+    func testManualCompletionAndUndo() {
+        let item = PlanTask(startMinutes: 540, endMinutes: 600, title: "学习", details: "")
+        let date = Date(timeIntervalSince1970: 1_792_548_000)
+        var day = DailyProgress(tasks: [item], at: date, calendar: calendar)
+        CoreCheck.equal(day.completionRate, 0)
+        CoreCheck.equal(day.toggleCompletion(id: item.id, at: date), true)
+        CoreCheck.equal(day.completedCount, 1)
+        CoreCheck.equal(day.completionRate, 1)
+        CoreCheck.equal(day.toggleCompletion(id: item.id, at: date), true)
+        CoreCheck.equal(day.completedCount, 0)
+        CoreCheck.equal(day.toggleCompletion(id: UUID(), at: date), false)
+    }
+
+    func testLocalDayAndIDReconciliation() {
+        let item = PlanTask(startMinutes: 540, endMinutes: 600, title: "学习", details: "")
+        let date = ISO8601DateFormatter().date(from: "2026-10-20T16:30:00Z")!
+        var day = DailyProgress(tasks: [item], at: date, calendar: calendar)
+        CoreCheck.equal(day.day, "2026-10-21")
+        day.toggleCompletion(id: item.id, at: date)
+        var edited = item
+        edited.title = "新标题"
+        let revised = day.synchronizing(tasks: [edited], calendar: calendar)
+        CoreCheck.equal(revised.completedCount, 1)
+        CoreCheck.equal(revised.tasks[0].task.title, "新标题")
+        CoreCheck.equal(day.tasks[0].task.title, "学习")
+        CoreCheck.equal(day.synchronizing(tasks: [], calendar: calendar).completionRate, 0)
+    }
+
+    func testLegacyPlanMigrationToSingleDocument() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("plan.json")
+        let item = PlanTask(startMinutes: 540, endMinutes: 600, title: "学习", details: "")
+        try JSONEncoder().encode([item]).write(to: url)
+        let storage = ProgressStore(storageURL: url)
+        let loaded = storage.load(defaultTasks: [])
+        CoreCheck.equal(loaded.document.tasks, [item])
+        CoreCheck.equal(loaded.document.history, [])
+        try storage.save(loaded.document)
+        CoreCheck.equal(try JSONDecoder().decode(ProgressDocument.self, from: Data(contentsOf: url)), loaded.document)
+    }
+}
+
 @main
 private struct CoreCheckRunner {
     static func main() throws {
@@ -274,7 +370,16 @@ private struct CoreCheckRunner {
         scheduleEngineTests.testSpringDSTUsesActualElapsedSeconds()
         scheduleEngineTests.testFallDSTUsesActualElapsedSeconds()
         scheduleEngineTests.testEmptySpringDSTDayHas23Hours()
-        print("Foundation checks: 20 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
+        let planEditingChecks = PlanEditingChecks()
+        planEditingChecks.testFullDefaultDayOffersNoFreeSlot()
+        planEditingChecks.testFreeSlotAndAdjacentEdit()
+        try planEditingChecks.testReplacementKeepsFragmentsAndUniqueIDs()
+        planEditingChecks.testInvalidReplacementLeavesOriginalUntouched()
+        let progressChecks = ProgressChecks()
+        progressChecks.testManualCompletionAndUndo()
+        progressChecks.testLocalDayAndIDReconciliation()
+        try progressChecks.testLegacyPlanMigrationToSingleDocument()
+        print("Foundation checks: 27 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
         exit(CoreCheck.failures == 0 ? 0 : 1)
     }
 }

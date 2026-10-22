@@ -66,7 +66,9 @@ printf 'APPL????' > "$APP_PATH/Contents/PkgInfo"
 ARCHIVE_PATH="$BUILD_ROOT/$CONFIGURATION/FocusDesk.zip"
 /usr/bin/ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl \
   "$APP_PATH" "$ARCHIVE_PATH"
+(cd "$BUILD_ROOT/$CONFIGURATION" && shasum -a 256 FocusDesk.zip > SHA256SUMS.txt)
 
 printf '\nBuilt %s\n' "$APP_PATH"
 printf 'Portable archive: %s\n' "$ARCHIVE_PATH"
+printf 'Ad-hoc signed local build; not Developer ID signed or Apple notarized.\n'
 printf 'Open the app yourself when ready; this script does not launch it.\n'

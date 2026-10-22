@@ -16,6 +16,9 @@ final class PlanStore: ObservableObject {
     @Published private(set) var launchAtLoginStatus = "未开启"
     @Published private(set) var isFloatingVisible = true
     @Published private(set) var isExpanded = false
+    @Published private(set) var todayProgress: DailyProgress
+    @Published private(set) var history: [DailyProgress]
+    @Published private(set) var needsDataRecovery = false
 
     @Published var compactSize: Double {
         didSet {
@@ -31,41 +34,138 @@ final class PlanStore: ObservableObject {
 
     var onShowPlan: (() -> Void)?
     var onShowSettings: (() -> Void)?
+    var onShowHistory: (() -> Void)?
     var onToggleFloating: (() -> Void)?
 
     let defaults: UserDefaults
     let storageURL: URL
     private var timer: Timer?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
-    private var blockedSaveReason: String?
     private let allowsLoginItemChanges: Bool
+    private let progressStore: ProgressStore
+    private let nowProvider: () -> Date
+    private let calendarProvider: () -> Calendar
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard, allowsLoginItemChanges: Bool = true) {
-        let date = Date()
+    init(
+        storageDirectory: URL? = nil,
+        defaults: UserDefaults = .standard,
+        allowsLoginItemChanges: Bool = true,
+        nowProvider: @escaping () -> Date = { Date() },
+        calendarProvider: @escaping () -> Calendar = { .current },
+        startClock: Bool = true
+    ) {
+        let date = nowProvider()
+        let calendar = DailyProgress.localCalendar(calendarProvider())
         let initialTasks = DefaultPlan.tasks.sorted { $0.startMinutes < $1.startMinutes }
         self.defaults = defaults
         self.allowsLoginItemChanges = allowsLoginItemChanges
+        self.nowProvider = nowProvider
+        self.calendarProvider = calendarProvider
         let directory = storageDirectory ?? FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         )[0].appendingPathComponent("FocusDesk", isDirectory: true)
         storageURL = directory.appendingPathComponent("plan.json")
+        progressStore = ProgressStore(storageURL: storageURL)
         tasks = initialTasks
         now = date
-        snapshot = ScheduleEngine.snapshot(tasks: initialTasks, at: date)
+        snapshot = ScheduleEngine.snapshot(tasks: initialTasks, at: date, calendar: calendar)
+        todayProgress = DailyProgress(tasks: initialTasks, at: date, calendar: calendar)
+        history = []
         alwaysOnTop = defaults.object(forKey: "alwaysOnTop") as? Bool ?? true
         compactSize = Self.clampedCompactSize(
             defaults.object(forKey: "compactSize") as? Double ?? Self.defaultCompactSize
         )
-        loadTasks()
-        refresh()
+        let loaded = progressStore.load(defaultTasks: initialTasks)
+        tasks = loaded.document.tasks.sorted { $0.startMinutes < $1.startMinutes }
+        history = loaded.document.history.sorted { $0.day > $1.day }
+        errorMessage = loaded.notice
+        needsDataRecovery = progressStore.blockedSaveReason != nil
+        snapshot = ScheduleEngine.snapshot(tasks: tasks, at: date, calendar: calendar)
+        let initialProgress = progress(for: tasks, at: date, calendar: calendar)
+        todayProgress = initialProgress
+        // Also migrates old task-array files in one atomic write, without inventing past days.
+        if !needsDataRecovery {
+            do {
+                let updatedHistory = replacingDay(initialProgress)
+                try progressStore.save(ProgressDocument(tasks: tasks, history: updatedHistory))
+                history = updatedHistory
+            } catch {
+                errorMessage = saveFailure(error)
+            }
+        }
         refreshLoginStatus()
-        startClock()
+        if startClock { beginClock() }
     }
 
     /// Updates from the wall clock, including after a wake or manual clock change.
     func refresh() {
-        now = Date()
-        snapshot = ScheduleEngine.snapshot(tasks: tasks, at: now)
+        now = nowProvider()
+        let calendar = DailyProgress.localCalendar(calendarProvider())
+        snapshot = ScheduleEngine.snapshot(tasks: tasks, at: now, calendar: calendar)
+        let current = progress(for: tasks, at: now, calendar: calendar)
+        let persisted = history.first { $0.day == current.day }
+        guard current != todayProgress || persisted != current else { return }
+        // A failed rollover still displays the correct new local day with no auto-completions.
+        if todayProgress != current { todayProgress = current }
+        guard !needsDataRecovery else { return }
+        do {
+            let updatedHistory = replacingDay(current)
+            try progressStore.save(ProgressDocument(tasks: tasks, history: updatedHistory))
+            history = updatedHistory
+            errorMessage = nil
+        } catch {
+            errorMessage = saveFailure(error)
+        }
+    }
+
+    func isTaskCompleted(_ id: UUID) -> Bool {
+        todayProgress.tasks.first { $0.id == id }?.isCompleted ?? false
+    }
+
+    @discardableResult
+    func toggleTaskCompletion(id: UUID) -> String? {
+        let date = nowProvider()
+        let calendar = DailyProgress.localCalendar(calendarProvider())
+        var updated = progress(for: tasks, at: date, calendar: calendar)
+        guard updated.toggleCompletion(id: id, at: date) else {
+            return "这个任务已不存在，请刷新今日计划后重试。"
+        }
+        return commit(tasks: tasks, progress: updated, at: date, calendar: calendar)
+    }
+
+    @discardableResult
+    func replaceTasks(_ tasks: [PlanTask]) -> String? {
+        save(tasks.map { task in
+            var trimmed = task
+            trimmed.title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            trimmed.details = task.details.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed
+        })
+    }
+
+    /// Requires the user to explicitly confirm that both the plan and history will be reset.
+    @discardableResult
+    func recoverWithDefaultPlan() -> String? {
+        guard needsDataRecovery else { return nil }
+        let date = nowProvider()
+        let calendar = DailyProgress.localCalendar(calendarProvider())
+        let defaults = DefaultPlan.tasks.sorted { $0.startMinutes < $1.startMinutes }
+        let progress = DailyProgress(tasks: defaults, at: date, calendar: calendar)
+        do {
+            try progressStore.recover(with: ProgressDocument(tasks: defaults, history: [progress]))
+            tasks = defaults
+            history = [progress]
+            todayProgress = progress
+            now = date
+            snapshot = ScheduleEngine.snapshot(tasks: defaults, at: date, calendar: calendar)
+            needsDataRecovery = false
+            errorMessage = nil
+            return nil
+        } catch {
+            let message = "恢复失败：\(error.localizedDescription)"
+            errorMessage = message
+            return message
+        }
     }
 
     @discardableResult
@@ -147,64 +247,49 @@ final class PlanStore: ObservableObject {
 
     private func save(_ candidate: [PlanTask]) -> String? {
         if let reason = PlanValidator.validate(candidate) { return reason }
-        if let reason = blockedSaveReason {
+        let sorted = candidate.sorted { $0.startMinutes < $1.startMinutes }
+        let date = nowProvider()
+        let calendar = DailyProgress.localCalendar(calendarProvider())
+        return commit(tasks: sorted, progress: progress(for: sorted, at: date, calendar: calendar), at: date, calendar: calendar)
+    }
+
+    private func progress(for tasks: [PlanTask], at date: Date, calendar: Calendar) -> DailyProgress {
+        let day = DailyProgress.dayKey(for: date, calendar: calendar)
+        return history.first { $0.day == day }?.synchronizing(tasks: tasks, calendar: calendar)
+            ?? DailyProgress(tasks: tasks, at: date, calendar: calendar)
+    }
+
+    private func replacingDay(_ progress: DailyProgress) -> [DailyProgress] {
+        (history.filter { $0.day != progress.day } + [progress]).sorted { $0.day > $1.day }
+    }
+
+    private func commit(tasks: [PlanTask], progress: DailyProgress, at date: Date, calendar: Calendar) -> String? {
+        if let reason = progressStore.blockedSaveReason {
             errorMessage = reason
             return reason
         }
-        let sorted = candidate.sorted { $0.startMinutes < $1.startMinutes }
         do {
-            try persist(sorted)
-            tasks = sorted
+            let updatedHistory = replacingDay(progress)
+            try progressStore.save(ProgressDocument(tasks: tasks, history: updatedHistory))
+            self.tasks = tasks
+            history = updatedHistory
+            todayProgress = progress
+            now = date
+            snapshot = ScheduleEngine.snapshot(tasks: tasks, at: date, calendar: calendar)
             errorMessage = nil
-            refresh()
             return nil
         } catch {
-            let message = "计划保存失败：\(error.localizedDescription)\n请检查存储空间和文件夹权限。"
+            let message = saveFailure(error)
             errorMessage = message
             return message
         }
     }
 
-    private func persist(_ plan: [PlanTask]) throws {
-        let directory = storageURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(plan)
-        try data.write(to: storageURL, options: .atomic)
+    private func saveFailure(_ error: Error) -> String {
+        "计划与完成记录保存失败，本次修改未保存：\(error.localizedDescription)\n请检查存储空间和文件夹权限。"
     }
 
-    private func loadTasks() {
-        guard FileManager.default.fileExists(atPath: storageURL.path) else {
-            do { try persist(tasks) }
-            catch { errorMessage = "默认计划暂未保存：\(error.localizedDescription)" }
-            return
-        }
-        do {
-            let data = try Data(contentsOf: storageURL)
-            let loaded = try JSONDecoder().decode([PlanTask].self, from: data)
-            if let reason = PlanValidator.validate(loaded) {
-                throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: reason])
-            }
-            tasks = loaded.sorted { $0.startMinutes < $1.startMinutes }
-        } catch {
-            // Keep an exact backup before allowing a later edit to replace bad data.
-            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-            let backup = storageURL.deletingLastPathComponent().appendingPathComponent(
-                "plan.corrupt-\(stamp)-\(UUID().uuidString.prefix(8)).json"
-            )
-            do {
-                try FileManager.default.copyItem(at: storageURL, to: backup)
-                errorMessage = "本地计划无法读取，已暂用默认计划。\n原文件已备份为 \(backup.lastPathComponent)。\n原因：\(error.localizedDescription)"
-            } catch {
-                let reason = "本地计划无法读取，且无法备份原文件。为保护原计划，暂时不能保存修改。\n请检查 \(storageURL.path) 的文件权限后重启应用。"
-                blockedSaveReason = reason
-                errorMessage = reason
-            }
-        }
-    }
-
-    private func startClock() {
+    private func beginClock() {
         let clock = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }

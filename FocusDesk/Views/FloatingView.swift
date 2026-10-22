@@ -110,6 +110,7 @@ private struct CompactResizeHandle: NSViewRepresentable {
 
 struct FloatingView: View {
     @ObservedObject var store: PlanStore
+    @State private var completionError: String?
 
     private let accent = Color(red: 0.28, green: 0.40, blue: 0.87)
 
@@ -203,6 +204,27 @@ struct FloatingView: View {
                     .tint(accent)
                     .controlSize(.small)
             }
+
+            HStack(spacing: 8) {
+                if let task = store.snapshot.current {
+                    let done = store.isTaskCompleted(task.id)
+                    Button {
+                        completionError = store.toggleTaskCompletion(id: task.id)
+                    } label: {
+                        Label(done ? "已完成" : "标记完成", systemImage: done ? "checkmark.circle.fill" : "circle")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(done ? Color.green : accent)
+                }
+                Spacer(minLength: 2)
+                Text("今日 \(store.todayProgress.completedCount)/\(store.todayProgress.totalCount)")
+                    .foregroundStyle(.secondary)
+                Button { store.onShowHistory?() } label: { Image(systemName: "chart.bar.xaxis") }
+                    .buttonStyle(.plain)
+                    .help("专注记录")
+                    .accessibilityLabel("打开专注记录")
+            }
+            .font(.system(size: 11))
         }
         .padding(22)
         .frame(width: 360, height: 400, alignment: .top)
@@ -211,6 +233,14 @@ struct FloatingView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+        }
+        .alert("完成状态未保存", isPresented: Binding(
+            get: { completionError != nil },
+            set: { if !$0 { completionError = nil } }
+        )) {
+            Button("好") { completionError = nil }
+        } message: {
+            Text(completionError ?? "")
         }
     }
 

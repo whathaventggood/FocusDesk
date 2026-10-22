@@ -1,0 +1,110 @@
+name: Release candidate
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-candidate:
+    name: Test and prepare draft release
+    runs-on: macos-15
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    env:
+      CERTIFICATE_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+      FOCUSDESK_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate version and choose signing channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' FocusDesk/Resources/Info.plist)
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            printf 'Tag %s does not match app version v%s.\n' "$GITHUB_REF_NAME" "$version" >&2
+            exit 1
+          fi
+          present=0
+          for key in CERTIFICATE_P12_BASE64 CERTIFICATE_PASSWORD FOCUSDESK_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD; do
+            if [[ -n "${!key}" ]]; then present=$((present + 1)); fi
+          done
+          if [[ "$present" == 0 ]]; then
+            echo 'FOCUSDESK_SIGNING_MODE=adhoc' >> "$GITHUB_ENV"
+            echo 'Preparing an ad-hoc community build. It is not Apple notarized.'
+          elif [[ "$present" == 6 ]]; then
+            echo 'FOCUSDESK_SIGNING_MODE=developer-id' >> "$GITHUB_ENV"
+          else
+            echo 'Signing secrets are only partly configured. Set all six secrets or remove them all; signing will not silently downgrade.' >&2
+            exit 1
+          fi
+      - name: Import Developer ID into a temporary CI keychain
+        if: env.FOCUSDESK_SIGNING_MODE == 'developer-id'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This step runs only on an ephemeral GitHub-hosted runner.
+          keychain_path="$RUNNER_TEMP/focusdesk-signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          certificate_path="$RUNNER_TEMP/focusdesk-certificate.p12"
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" >/dev/null
+          rm -f "$certificate_path"
+      - name: Run XCTest and build release candidate
+        run: ./scripts/package-release.sh
+      - name: Retain XCTest result bundle and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Release-XCTest-${{ github.run_id }}
+          path: build/TestResults/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Retain release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: FocusDesk-release-candidate
+          path: |
+            build/release/*.zip
+            build/release/SHA256SUMS.txt
+            build/release/INSTALL.md
+            build/release/ReleaseNotes.md
+          retention-days: 14
+          if-no-files-found: error
+      - name: Create draft for maintainer review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag --draft \
+            --title "FocusDesk $GITHUB_REF_NAME" \
+            --notes-file build/release/ReleaseNotes.md \
+            build/release/*.zip build/release/SHA256SUMS.txt build/release/INSTALL.md
+      - name: Remove temporary signing material
+        if: always() && env.FOCUSDESK_SIGNING_MODE == 'developer-id'
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/focusdesk-certificate.p12"
+          if [[ -f "$RUNNER_TEMP/focusdesk-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/focusdesk-signing.keychain-db"
+          fi

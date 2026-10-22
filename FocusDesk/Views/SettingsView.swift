@@ -3,6 +3,8 @@ import ServiceManagement
 
 struct SettingsView: View {
     @ObservedObject var store: PlanStore
+    @State private var confirmRecovery = false
+    @State private var recoveryError: String?
 
     var body: some View {
         ScrollView {
@@ -70,14 +72,34 @@ struct SettingsView: View {
                         .font(.callout).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if store.needsDataRecovery {
+                    Button("备份原文件并恢复默认计划…", role: .destructive) {
+                        confirmRecovery = true
+                    }
+                    Text("恢复会重置当前计划和完成记录；损坏的原文件会先备份到本机，不会静默覆盖。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let recoveryError {
+                    Text(recoveryError).font(.caption).foregroundStyle(.red)
+                }
                 HStack {
-                    Text("FocusDesk 1.0").font(.caption).foregroundStyle(.tertiary)
+                    Text("FocusDesk \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "开发版")")
+                        .font(.caption).foregroundStyle(.tertiary)
                     Spacer()
+                    Button("专注记录") { store.onShowHistory?() }
                     Button("今日计划") { store.onShowPlan?() }
                 }
             }
             .padding(28)
         }
         .frame(width: 440, height: 540)
+        .confirmationDialog("恢复默认计划并重置完成记录？", isPresented: $confirmRecovery) {
+            Button("确认备份并恢复", role: .destructive) {
+                recoveryError = store.recoverWithDefaultPlan()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("原文件备份成功后才会恢复。历史完成记录将重置，保留的备份可用于后续恢复。")
+        }
     }
 }

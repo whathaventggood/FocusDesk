@@ -17,6 +17,13 @@
 		A10000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SettingsView.swift */; };
 		A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ScheduleEngineTests.swift */; };
 		A10000000000000000000012 /* PlanValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* PlanValidationTests.swift */; };
+		A10000000000000000000013 /* PlanEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PlanEditing.swift */; };
+		A10000000000000000000014 /* DailyProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* DailyProgress.swift */; };
+		A10000000000000000000015 /* ProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* ProgressStore.swift */; };
+		A10000000000000000000016 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* HistoryView.swift */; };
+		A10000000000000000000017 /* PlanEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* PlanEditingTests.swift */; };
+		A10000000000000000000018 /* ProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* ProgressTests.swift */; };
+		A10000000000000000000019 /* PlanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* PlanStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +51,13 @@
 		A20000000000000000000012 /* PlanValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanValidationTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* FocusDesk.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FocusDesk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000021 /* FocusDeskTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FocusDeskTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000013 /* PlanEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditing.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* DailyProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyProgress.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* ProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* PlanEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditingTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* ProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000019 /* PlanStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanStoreTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,19 +95,19 @@
 		};
 		A50000000000000000000004 /* Models */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */,);
+			children = (A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */, A20000000000000000000013 /* PlanEditing.swift */, A20000000000000000000014 /* DailyProgress.swift */,);
 			path = Models;
 			sourceTree = "<group>";
 		};
 		A50000000000000000000005 /* Services */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000005 /* ScheduleEngine.swift */, A20000000000000000000006 /* PlanStore.swift */,);
+			children = (A20000000000000000000005 /* ScheduleEngine.swift */, A20000000000000000000006 /* PlanStore.swift */, A20000000000000000000015 /* ProgressStore.swift */,);
 			path = Services;
 			sourceTree = "<group>";
 		};
 		A50000000000000000000006 /* Views */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000007 /* FloatingView.swift */, A20000000000000000000008 /* PlanView.swift */, A20000000000000000000009 /* SettingsView.swift */,);
+			children = (A20000000000000000000007 /* FloatingView.swift */, A20000000000000000000008 /* PlanView.swift */, A20000000000000000000009 /* SettingsView.swift */, A20000000000000000000016 /* HistoryView.swift */,);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -105,7 +119,7 @@
 		};
 		A50000000000000000000008 /* FocusDeskTests */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000010 /* ScheduleEngineTests.swift */, A20000000000000000000012 /* PlanValidationTests.swift */,);
+			children = (A20000000000000000000010 /* ScheduleEngineTests.swift */, A20000000000000000000012 /* PlanValidationTests.swift */, A20000000000000000000017 /* PlanEditingTests.swift */, A20000000000000000000018 /* ProgressTests.swift */, A20000000000000000000019 /* PlanStoreTests.swift */,);
 			path = FocusDeskTests;
 			sourceTree = "<group>";
 		};
@@ -186,13 +200,23 @@
 				A10000000000000000000007 /* FloatingView.swift in Sources */,
 				A10000000000000000000008 /* PlanView.swift in Sources */,
 				A10000000000000000000009 /* SettingsView.swift in Sources */,
+				A10000000000000000000013 /* PlanEditing.swift in Sources */,
+				A10000000000000000000014 /* DailyProgress.swift in Sources */,
+				A10000000000000000000015 /* ProgressStore.swift in Sources */,
+				A10000000000000000000016 /* HistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A60000000000000000000002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */, A10000000000000000000012 /* PlanValidationTests.swift in Sources */,);
+			files = (
+				A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */,
+				A10000000000000000000012 /* PlanValidationTests.swift in Sources */,
+				A10000000000000000000017 /* PlanEditingTests.swift in Sources */,
+				A10000000000000000000018 /* ProgressTests.swift in Sources */,
+				A10000000000000000000019 /* PlanStoreTests.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
@@ -245,13 +269,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
@@ -264,13 +288,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;

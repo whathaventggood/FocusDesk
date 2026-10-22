@@ -13,7 +13,10 @@ xcrun swiftc -swift-version 5 \
     -module-cache-path "$CHECK_BUILD_DIR/ModuleCache" \
     "$PROJECT_ROOT/FocusDesk/Models/PlanTask.swift" \
     "$PROJECT_ROOT/FocusDesk/Models/DefaultPlan.swift" \
+    "$PROJECT_ROOT/FocusDesk/Models/PlanEditing.swift" \
+    "$PROJECT_ROOT/FocusDesk/Models/DailyProgress.swift" \
     "$PROJECT_ROOT/FocusDesk/Services/ScheduleEngine.swift" \
+    "$PROJECT_ROOT/FocusDesk/Services/ProgressStore.swift" \
     "$PROJECT_ROOT/scripts/check-core.swift" \
     -o "$CHECK_BUILD_DIR/FocusDeskCoreChecks"
 
