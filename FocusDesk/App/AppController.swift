@@ -69,7 +69,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var statusItem: NSStatusItem?
     private var visibilityMenuItem: NSMenuItem?
     private var subscriptions = Set<AnyCancellable>()
-    private let panelSize = NSSize(width: 360, height: 400)
+    private let panelSize = FloatingView.panelSize
     private let panelPositionKey = "compactWindowPosition"
     private var compactHovered = false
     private var detailHovered = false

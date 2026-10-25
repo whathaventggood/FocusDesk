@@ -12,7 +12,7 @@
 
 ### 桌面小方块
 
-平时只保留一个小方块，默认边长 56 点。鼠标移入自动展开任务详情，移入详情区域会保持展开；离开方块和详情后自动收起。
+平时只保留一个小方块，默认边长 56 点。鼠标移入自动展开 360 × 500 点的任务详情面板，移入详情区域会保持展开；离开方块和详情后自动收起。面板底部的“一点鼓励”展示简短语录。
 
 <img src="docs/screenshots/compact.png" alt="FocusDesk 桌面小方块，支持悬停展开、拖动和调整大小" width="112">
 
@@ -20,7 +20,7 @@
 
 | 展开的任务详情 | 设置 |
 | :---: | :---: |
-| <img src="docs/screenshots/floating.png" alt="FocusDesk 当前任务、倒计时、进度与下一项任务" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk 方块大小、置顶与登录时启动设置" width="352"> |
+| <img src="docs/screenshots/floating.png" alt="FocusDesk 当前任务、倒计时、进度、下一项任务与每六小时更新的励志语录" width="320"> | <img src="docs/screenshots/settings.png" alt="FocusDesk 方块大小、置顶与登录时启动设置" width="352"> |
 
 ### 今日计划
 
@@ -38,6 +38,7 @@
 
 - **桌面组件**：拖动方块移动位置，拖动右下角调节大小。默认 56 点，设置中可调为 32–112 点，位置和大小自动记忆。悬停展开不主动抢夺键盘焦点。
 - **当前任务**：显示时间段、标题、详细说明、剩余时间、时间进度和下一项任务。未安排任务时显示“自由时间”；时间进度只代表时间流逝，不代表任务完成。
+- **一点鼓励**：悬停详情底部从 20 句内置原创中文语录中随机选择一句，每 6 小时更新，避免相邻两次重复。重启后同一周期保留原句；长时间睡眠后按实际时间刷新。语录离线可用，不需要联网。
 - **今日计划**：点击任务卡片或铅笔图标，在原位置修改时间、名称和说明，点击“完成并保存”（⌘S）保存并同步悬浮窗。新增、编辑、删除均在同一管理窗口完成。
 - **新增冲突处理**：有空闲时段时优先填入可用时间；全天排满时也能打开新增表单。与已有任务冲突时列出受影响任务，允许修改时间，或确认替换占用时段；替换会保留原任务未被覆盖的前后片段。确认前不改动原计划。
 - **今日完成情况**：在任务旁手动勾选完成或撤销，保存后重启仍保留。时间到了不会自动标记完成。
@@ -79,7 +80,7 @@
 ./scripts/package-release.sh
 ```
 
-输出位于 `build/release/`，包含 `FocusDesk-2.1.0-arm64.zip`、SHA-256、安装说明和发布说明。测试不通过时不生成候选包。Xcode 的 **Product → Archive** 也可用于归档；对外分发的签名、公证与草稿发布步骤见 [发布流程](docs/RELEASING.md)。
+输出位于 `build/release/`，包含 `FocusDesk-2.2.0-arm64.zip`、SHA-256、安装说明和发布说明。测试不通过时不生成候选包。Xcode 的 **Product → Archive** 也可用于归档；对外分发的签名、公证与草稿发布步骤见 [发布流程](docs/RELEASING.md)。
 
 ## 测试与 CI
 
@@ -89,11 +90,11 @@
 
 此脚本实际执行 `xcodebuild build test`，运行 app-hosted XCTest，保留 `build/TestResults/*.xcresult` 和日志。测试环境使用项目内的数据目录和内存偏好，避免覆盖日常使用的计划。只有 Command Line Tools 时脚本会明确失败，不会用其他检查冒充 XCTest。
 
-测试覆盖时间匹配和边界、剩余时间、自由时间、跨日、输入校验、新增冲突替换、今日完成/撤销、日期切换、历史快照、旧版 JSON 迁移、原子保存与损坏文件保护。
+测试覆盖时间匹配和边界、剩余时间、自由时间、跨日、输入校验、新增冲突替换、今日完成/撤销、日期切换、历史快照、旧版 JSON 迁移、原子保存与损坏文件保护，以及语录六小时边界、重启保持、唤醒补刷、时钟回拨与缓存恢复。
 
-GitHub Actions 对 `main` 推送、Pull Request 和手动触发执行同一 Xcode 测试，并保留结果包、日志和 arm64 预览 ZIP。正式候选包工作流由版本标签触发，测试成功后创建 **draft Release**，等待维护者审阅发布。工作流文件已加入仓库；**配置好 CI 不代表 CI 已运行通过**，请以 Actions 中对应提交的结果为准。
+GitHub Actions 对 `main` 推送、Pull Request 和手动触发执行同一 Xcode 测试，并保留结果包、日志和 arm64 预览 ZIP。正式候选包工作流由版本标签触发，测试成功后创建 **draft Release**，等待维护者审阅发布。测试是否通过以 Actions 中对应提交的实际结果和 XCTest 报告为准。
 
-本机验证记录：Foundation 核心检查 27 个用例、151 项断言通过；原生窗口检查 112 项通过；arm64 Release 应用构建和签名校验通过。本机安装为 Command Line Tools，尚未具备完整 Xcode；本轮真实 XCTest 结果需由完整 Xcode 或推送后的 CI 补齐。这些辅助检查不替代 XCTest。
+Foundation 核心检查、原生窗口检查和本机应用构建用于辅助验证；它们不能替代完整 Xcode 或 CI 执行的 app-hosted XCTest。
 
 辅助检查仍可运行：
 
@@ -102,7 +103,7 @@ bash scripts/check-core.sh
 bash scripts/check-native.sh
 ```
 
-原生窗口检查需要可访问 WindowServer 的桌面会话；仅编译可用 `bash scripts/check-native.sh --build-only`。真实跨应用悬停、拖动、缩放和睡眠唤醒仍需手动验收。
+原生窗口检查需要可访问 WindowServer 的桌面会话；仅编译可用 `bash scripts/check-native.sh --build-only`。真实跨应用悬停、拖动、缩放、语录展示和睡眠唤醒仍需手动验收。
 
 ## 数据与备份
 
@@ -112,7 +113,7 @@ bash scripts/check-native.sh
 
 同一 JSON 文件原子保存重复作息和每日历史记录，包含数据格式版本。兼容旧版只含任务数组的 `plan.json`；首次保存时迁移，升级前建议备份，降级时需恢复旧版备份。当天修改同步到今日快照，历史日期快照保留。
 
-若 JSON 无法读取，应用保留损坏文件备份并停止保存，显示具体恢复提示，避免静默覆盖历史。方块位置、大小和置顶偏好使用 `com.focusdesk.FocusDesk` 的 `UserDefaults`，登录项由系统保存。应用没有服务器，也不会上传计划。
+若 JSON 无法读取，应用保留损坏文件备份并停止保存，显示具体恢复提示，避免静默覆盖历史。方块位置、大小和置顶偏好使用 `com.focusdesk.FocusDesk` 的 `UserDefaults`，登录项由系统保存。语录及其刷新时间单独缓存在 `UserDefaults` 中，不修改 `plan.json`、任务或历史完成记录。应用没有服务器，也不会上传计划。
 
 开发可用 `FOCUSDESK_DATA_DIRECTORY` 指定数据目录。编译缓存、测试报告和脚本临时文件都位于项目 `build/` 内。备份与恢复详见 [安装说明](docs/INSTALL.md)。
 

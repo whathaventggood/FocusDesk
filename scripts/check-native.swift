@@ -45,6 +45,7 @@ private enum NativeSmoke {
                 do {
                     print("Checking native launch callback; windows: \(application.windows.map(\.title))")
                     try verifyPersistence(in: output)
+                    try verifyQuoteRefresh(in: output)
                     try verifyWindows(controller: controller, output: output)
                     print("PASS: \(checkCount) native window, hover, persistence, and recovery checks")
                     print("Preview PNGs: \(output.path)")
@@ -174,6 +175,50 @@ private enum NativeSmoke {
     }
 
     @MainActor
+    private static func verifyQuoteRefresh(in output: URL) throws {
+        let directory = output.appendingPathComponent("quotes-\(UUID().uuidString)", isDirectory: true)
+        let preferences = SmokeDefaults()
+        let start = ISO8601DateFormatter().date(from: "2026-10-25T00:00:00Z")!
+        var now = start
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let store = PlanStore(
+            storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+            nowProvider: { now }, calendarProvider: { calendar }, startClock: false
+        )
+        defer { store.stop() }
+        let initialQuote = store.motivationalQuote
+        let savedPlan = try Data(contentsOf: store.storageURL)
+        try require(MotivationalQuote.all.contains(initialQuote), "The widget should start with a bundled motivational quote")
+
+        now = start.addingTimeInterval(QuoteRotation.refreshInterval - 1)
+        store.refresh()
+        try require(store.motivationalQuote == initialQuote, "The quote must remain stable before six hours")
+
+        now = start.addingTimeInterval(QuoteRotation.refreshInterval)
+        store.refresh()
+        let refreshedQuote = store.motivationalQuote
+        try require(refreshedQuote != initialQuote, "The quote must change exactly when six hours have elapsed")
+        try require(try Data(contentsOf: store.storageURL) == savedPlan, "Quote updates must not rewrite the task or completion data")
+        store.refresh()
+        try require(store.motivationalQuote == refreshedQuote, "Repeated refreshes must preserve the new quote")
+
+        let reloaded = PlanStore(
+            storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+            nowProvider: { now }, calendarProvider: { calendar }, startClock: false
+        )
+        defer { reloaded.stop() }
+        try require(reloaded.motivationalQuote == refreshedQuote, "The quote must survive relaunch within its six-hour interval")
+        now = now.addingTimeInterval(3 * QuoteRotation.refreshInterval)
+        reloaded.refresh()
+        try require(reloaded.motivationalQuote != refreshedQuote, "Waking after multiple intervals must refresh the quote")
+        let afterWake = reloaded.motivationalQuote
+        reloaded.refresh()
+        try require(reloaded.motivationalQuote == afterWake, "A long sleep should trigger only one quote refresh")
+        print("PASS: six-hour quotes, stable hover/relaunch, wake catch-up, unchanged plan data")
+    }
+
+    @MainActor
     private static func verifyWindows(controller: AppController, output: URL) throws {
         let panels = NSApp.windows.compactMap { $0 as? NSPanel }
         let compacts = panels.filter { $0.title == "FocusDesk 小方块" }
@@ -216,6 +261,19 @@ private enum NativeSmoke {
             try require(controller.store.isTaskCompleted(current.id), "Widget completion should update today's progress")
         }
         try writePreview(detail, to: output.appendingPathComponent("floating.png"))
+        let originalTasks = controller.store.tasks
+        let originalQuoteCache = controller.store.defaults.object(forKey: QuoteRotation.cacheKey)
+        if var current = controller.store.snapshot.current,
+           let longestQuote = MotivationalQuote.all.max(by: { $0.text.count < $1.text.count }) {
+            current.title = "保持专注，把今天最重要的一件事情认真做好"
+            try require(controller.store.saveTask(current) == nil, "The long-title preview task should save")
+            controller.store.defaults.set(["id": longestQuote.id, "selectedAt": controller.store.now], forKey: QuoteRotation.cacheKey)
+            controller.store.refresh()
+            try writePreview(detail, to: output.appendingPathComponent("floating-long-content.png"))
+            try require(controller.store.replaceTasks(originalTasks) == nil, "The preview should restore the original tasks")
+            controller.store.defaults.set(originalQuoteCache, forKey: QuoteRotation.cacheKey)
+            controller.store.refresh()
+        }
         controller.collapseDetails()
 
         controller.setCompactHover(true)
@@ -290,11 +348,12 @@ private enum NativeSmoke {
         controller.resizeCompact(to: CGFloat(PlanStore.defaultCompactSize))
         pumpEvents(for: 0.05)
 
-        let destination = NSPoint(x: visible.midX, y: visible.midY)
+        // AppKit rounds fractional window origins to whole screen points.
+        let destination = NSPoint(x: floor(visible.midX), y: floor(visible.midY))
         compact.setFrameOrigin(destination)
         pumpEvents(for: 0.05)
         let stored = controller.store.defaults.dictionary(forKey: "compactWindowPosition")
-        try require(stored?["x"] as? Double == Double(destination.x) && stored?["y"] as? Double == Double(destination.y), "Native compact movement should persist its position")
+        try require(stored?["x"] as? Double == Double(destination.x) && stored?["y"] as? Double == Double(destination.y), "Native compact movement should persist its position; target: \(destination), frame: \(compact.frame.origin), saved: \(String(describing: stored))")
         print("PASS: square resizing, limits, top-edge anchoring, bounds, persisted size and position")
     }
 
@@ -383,7 +442,7 @@ private enum NativeSmoke {
             try require(visible.contains(detail.frame), "Details must remain inside the usable screen near every corner")
             let intersection = compact.frame.intersection(detail.frame)
             try require(intersection.isNull || intersection.width * intersection.height < 1, "Details must not cover the compact square")
-            try require(approximately(detail.frame.width, 360) && approximately(detail.frame.height, 400), "Detail layout should retain its readable 360 × 400-point size")
+            try require(approximately(detail.frame.width, FloatingView.panelSize.width) && approximately(detail.frame.height, FloatingView.panelSize.height), "Detail layout should fit tasks and the motivational quote")
         }
         controller.collapseDetails()
         compact.setFrameOrigin(original)

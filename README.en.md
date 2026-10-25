@@ -12,7 +12,7 @@ A native desktop focus manager for Apple Silicon Macs, built with Swift, SwiftUI
 
 ### Desktop square
 
-A small 56-point square stays on the desktop. Hover to expand task details, move into the details to keep them open, and move outside both areas to collapse.
+A small 56-point square stays on the desktop. Hover to expand a 360 × 500-point task details panel, move into the details to keep them open, and move outside both areas to collapse. “一点鼓励” (A little encouragement) at the bottom displays a short quote.
 
 <img src="docs/screenshots/compact.png" alt="FocusDesk desktop square with hover expansion, dragging, and resizing" width="112">
 
@@ -38,6 +38,7 @@ Review completion rates by date and each day's task snapshot.
 
 - **Desktop square:** drag to move, or drag the bottom-right corner to resize. The default size is 56 points; Settings allows 32–112 points. Size and position persist. Hover expansion does not take keyboard focus.
 - **Current task:** shows its time range, title, details, remaining time, elapsed-time progress, and next task. Gaps show “自由时间” (free time). Elapsed-time progress is separate from completion.
+- **A little encouragement:** the expanded panel randomly selects from 20 original Chinese quotes included with the app. The quote updates every six hours without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. Quotes work offline.
 - **Today's plan:** click a task card or pencil to edit its time, title, and details in place. “完成并保存” (save, ⌘S) persists the change and updates the desktop view. Viewing and editing share one management window.
 - **Conflict handling:** new tasks prefer available gaps. A fully booked day still allows an empty-time draft. Overlaps list the affected tasks and available gaps. Change the time, use a suggested gap, or preview replacing the occupied interval while preserving uncovered portions of the original tasks. Replacement requires explicit confirmation before atomic saving.
 - **Completion:** manually check or uncheck tasks; completion survives restart. Reaching an end time never automatically marks a task complete.
@@ -79,7 +80,7 @@ With full Xcode, run real XCTest and produce a versioned candidate:
 ./scripts/package-release.sh
 ```
 
-Outputs in `build/release/` include `FocusDesk-2.1.0-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
+Outputs in `build/release/` include `FocusDesk-2.2.0-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
 
 ## Tests and CI
 
@@ -89,11 +90,11 @@ Outputs in `build/release/` include `FocusDesk-2.1.0-arm64.zip`, SHA-256, instal
 
 This executes `xcodebuild build test` against the app-hosted XCTest target and preserves `build/TestResults/*.xcresult` and logs. Test environments use project-local data and in-memory preferences to protect everyday plans. With only Command Line Tools the script fails explicitly; smoke checks do not stand in for XCTest.
 
-Tests cover time matching and boundaries, remaining time, free time, midnight, input validation, conflict replacement, completion and undo, date changes, historical snapshots, legacy JSON migration, atomic persistence, and corrupt-file protection.
+Tests cover time matching and boundaries, remaining time, free time, midnight, input validation, conflict replacement, completion and undo, date changes, historical snapshots, legacy JSON migration, atomic persistence, corrupt-file protection, and quote rotation across six-hour boundaries, restarts, sleep, clock corrections, and malformed caches.
 
-GitHub Actions runs the same Xcode tests for `main` pushes, pull requests, and manual dispatches, retaining reports, logs, and an arm64 preview ZIP. A version tag triggers the release workflow; only successful tests allow creation of a **draft release**, which a maintainer reviews before publishing. **Adding CI configuration is not evidence of a passing CI run.** Check Actions for the exact commit.
+GitHub Actions runs the same Xcode tests for `main` pushes, pull requests, and manual dispatches, retaining reports, logs, and an arm64 preview ZIP. A version tag triggers the release workflow; only successful tests allow creation of a **draft release**, which a maintainer reviews before publishing. Check the actual Actions result and XCTest report for the exact commit to confirm whether tests passed.
 
-Local validation status: 27 Foundation cases (151 assertions), 112 native-window checks, and the arm64 Release build/signature verification passed. This Mac has Command Line Tools rather than full Xcode. Real XCTest still requires full Xcode or CI after pushing; these checks do not replace it.
+Foundation checks, native-window checks, and local app builds provide additional validation. They do not replace app-hosted XCTest run with full Xcode or in CI.
 
 Optional checks:
 
@@ -102,7 +103,7 @@ bash scripts/check-core.sh
 bash scripts/check-native.sh
 ```
 
-Native checks require a desktop session with WindowServer access; use `bash scripts/check-native.sh --build-only` to compile without opening test windows. Cross-app hovering, dragging, resizing, and actual sleep/wake still need manual acceptance testing.
+Native checks require a desktop session with WindowServer access; use `bash scripts/check-native.sh --build-only` to compile without opening test windows. Cross-app hovering, dragging, resizing, quote display, and actual sleep/wake still need manual acceptance testing.
 
 ## Data and backup
 
@@ -112,7 +113,7 @@ Native checks require a desktop session with WindowServer access; use `bash scri
 
 One versioned JSON document atomically stores the repeating plan and daily history. Legacy task-array files migrate on the first successful save. Back up before upgrading; downgrading requires restoring a compatible backup. Current-day edits reconcile today's snapshot, while past snapshots remain unchanged.
 
-Unreadable data is backed up and saving stops with a recovery message, protecting history from silent replacement. Window position, size, and always-on-top preferences use the `com.focusdesk.FocusDesk` UserDefaults domain. macOS stores the login-item state. There is no server and plans are not uploaded.
+Unreadable data is backed up and saving stops with a recovery message, protecting history from silent replacement. Window position, size, and always-on-top preferences use the `com.focusdesk.FocusDesk` UserDefaults domain. macOS stores the login-item state. The quote and its refresh time are cached separately in UserDefaults without changing `plan.json`, tasks, or completion history. There is no server and plans are not uploaded.
 
 Developers can set `FOCUSDESK_DATA_DIRECTORY` to override the JSON directory. Compiler caches, test reports, and script temporary files remain inside the project's `build/` directory. See [installation instructions](docs/INSTALL.md#english) for backup and recovery.
 

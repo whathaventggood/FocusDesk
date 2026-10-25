@@ -24,6 +24,40 @@ final class PlanStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testQuoteRefreshesAfterSixHoursWithoutChangingPlanOrProgress() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let preferences = TestDefaults()
+        let start = date("2026-10-25T00:00:00Z")
+        var now = start
+        let zone = calendar("Asia/Shanghai")
+        let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                              nowProvider: { now }, calendarProvider: { zone }, startClock: false)
+        defer { store.stop() }
+        let originalQuote = store.motivationalQuote
+        let originalProgress = store.todayProgress
+        let originalData = try Data(contentsOf: store.storageURL)
+
+        now = start.addingTimeInterval(QuoteRotation.refreshInterval - 1)
+        store.refresh()
+        XCTAssertEqual(store.motivationalQuote, originalQuote)
+
+        now = start.addingTimeInterval(QuoteRotation.refreshInterval)
+        store.refresh()
+        XCTAssertNotEqual(store.motivationalQuote, originalQuote)
+        XCTAssertEqual(store.todayProgress, originalProgress)
+        XCTAssertEqual(try Data(contentsOf: store.storageURL), originalData)
+
+        let refreshedQuote = store.motivationalQuote
+        store.refresh()
+        XCTAssertEqual(store.motivationalQuote, refreshedQuote)
+        let reloaded = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                 nowProvider: { now }, calendarProvider: { zone }, startClock: false)
+        defer { reloaded.stop() }
+        XCTAssertEqual(reloaded.motivationalQuote, refreshedQuote)
+    }
+
+    @MainActor
     func testLegacyMigrationCompletionUndoAndPersistenceReload() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

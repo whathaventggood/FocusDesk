@@ -109,6 +109,8 @@ private struct CompactResizeHandle: NSViewRepresentable {
 }
 
 struct FloatingView: View {
+    static let panelSize = NSSize(width: 360, height: 500)
+
     @ObservedObject var store: PlanStore
     @State private var completionError: String?
 
@@ -225,9 +227,33 @@ struct FloatingView: View {
                     .accessibilityLabel("打开专注记录")
             }
             .font(.system(size: 11))
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(accent)
+                    Text("一点鼓励")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text("每 6 小时更新")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.system(size: 10))
+
+                Text(store.motivationalQuote.text)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("motivationalQuote")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .combine)
         }
         .padding(22)
-        .frame(width: 360, height: 400, alignment: .top)
+        .frame(width: Self.panelSize.width, height: Self.panelSize.height, alignment: .top)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {

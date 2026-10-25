@@ -11,6 +11,7 @@ final class PlanStore: ObservableObject {
     @Published private(set) var tasks: [PlanTask]
     @Published private(set) var snapshot: ScheduleSnapshot
     @Published private(set) var now: Date
+    @Published private(set) var motivationalQuote: MotivationalQuote
     @Published private(set) var errorMessage: String?
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginStatus = "未开启"
@@ -43,6 +44,7 @@ final class PlanStore: ObservableObject {
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private let allowsLoginItemChanges: Bool
     private let progressStore: ProgressStore
+    private let quoteRotation: QuoteRotation
     private let nowProvider: () -> Date
     private let calendarProvider: () -> Calendar
 
@@ -61,6 +63,9 @@ final class PlanStore: ObservableObject {
         self.allowsLoginItemChanges = allowsLoginItemChanges
         self.nowProvider = nowProvider
         self.calendarProvider = calendarProvider
+        let quoteRotation = QuoteRotation(defaults: defaults)
+        self.quoteRotation = quoteRotation
+        motivationalQuote = quoteRotation.quote(at: date)
         let directory = storageDirectory ?? FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         )[0].appendingPathComponent("FocusDesk", isDirectory: true)
@@ -100,6 +105,8 @@ final class PlanStore: ObservableObject {
     /// Updates from the wall clock, including after a wake or manual clock change.
     func refresh() {
         now = nowProvider()
+        let quote = quoteRotation.quote(at: now)
+        if motivationalQuote != quote { motivationalQuote = quote }
         let calendar = DailyProgress.localCalendar(calendarProvider())
         snapshot = ScheduleEngine.snapshot(tasks: tasks, at: now, calendar: calendar)
         let current = progress(for: tasks, at: now, calendar: calendar)
