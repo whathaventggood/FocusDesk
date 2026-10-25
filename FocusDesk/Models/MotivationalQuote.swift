@@ -6,26 +6,26 @@ struct MotivationalQuote: Identifiable, Equatable {
 
     // Original encouragements. Keep IDs stable so cached selections survive app updates.
     static let all: [MotivationalQuote] = [
-        .init(id: "small-step", text: "先把眼前这一小步走好。"),
-        .init(id: "one-thing", text: "专注一件事，就是向前一步。"),
-        .init(id: "daily-growth", text: "今天的积累，会成为明天的底气。"),
-        .init(id: "gentle-start", text: "不必等到准备完美，现在就能开始。"),
-        .init(id: "own-pace", text: "按自己的节奏，慢慢把事情做好。"),
-        .init(id: "steady-progress", text: "一点点推进，也是在认真前行。"),
-        .init(id: "return-focus", text: "走神没关系，轻轻把注意力带回来。"),
-        .init(id: "rest-matters", text: "好好休息，也是在为下一步蓄力。"),
-        .init(id: "begin-small", text: "把大目标拆小，先完成手边这一件。"),
-        .init(id: "quiet-work", text: "安静做事的每一刻，都在积累力量。"),
-        .init(id: "today-enough", text: "今天做好的这一点，值得被看见。"),
-        .init(id: "try-again", text: "遇到难处，换个小步骤再试一次。"),
-        .init(id: "patient-growth", text: "给成长一点耐心，给自己一点空间。"),
-        .init(id: "make-room", text: "留一点余地，让专注走得更长久。"),
-        .init(id: "next-step", text: "看清下一步，就已经有了方向。"),
-        .init(id: "small-wins", text: "每完成一小件，都让目标近一点。"),
-        .init(id: "fresh-start", text: "此刻重新开始，也一样有意义。"),
-        .init(id: "careful-work", text: "用心完成的事，自有它的分量。"),
-        .init(id: "keep-curious", text: "带着一点好奇，继续探索眼前的事。"),
-        .init(id: "trust-steps", text: "不用急着抵达，脚下的每一步都算数。")
+        .init(id: "small-step", text: "天行健，君子以自强不息。"),
+        .init(id: "one-thing", text: "路漫漫其修远兮，吾将上下而求索。"),
+        .init(id: "daily-growth", text: "一个知道自己为何而活的人，几乎可以忍受任何一种生活。"),
+        .init(id: "gentle-start", text: "一点浩然气，千里快哉风。"),
+        .init(id: "own-pace", text: "未经省察的人生不值得过。"),
+        .init(id: "steady-progress", text: "攀向高峰的奋斗本身，足以充实一个人的心。"),
+        .init(id: "return-focus", text: "对你心中一切尚未解决的问题保持耐心。"),
+        .init(id: "rest-matters", text: "愤世嫉俗者知道一切事物的价格，却不知道任何事物的价值。"),
+        .init(id: "begin-small", text: "人生对我们任何人都不容易，但那又怎样？我们必须有毅力。"),
+        .init(id: "quiet-work", text: "此心安处是吾乡。"),
+        .init(id: "today-enough", text: "男儿到死心如铁。看试手，补天裂。"),
+        .init(id: "try-again", text: "你或许正因为寻求太多，反而无法发现。"),
+        .init(id: "patient-growth", text: "只要善加安排，生命足够我们完成伟大的事业。"),
+        .init(id: "make-room", text: "不积跬步，无以至千里。"),
+        .init(id: "next-step", text: "谁道人生无再少？门前流水尚能西！"),
+        .init(id: "small-wins", text: "流光容易把人抛，红了樱桃，绿了芭蕉。"),
+        .init(id: "fresh-start", text: "不知道自己驶向哪个港口，任何风都不是顺风。"),
+        .init(id: "careful-work", text: "立志欲坚不欲锐，成功在久不在速。"),
+        .init(id: "keep-curious", text: "九万里风鹏正举。风休住，蓬舟吹取三山去！"),
+        .init(id: "trust-steps", text: "知是行之始，行是知之成。")
     ]
 }
 

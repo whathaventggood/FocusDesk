@@ -2,7 +2,7 @@
 # Run the real app-hosted XCTest target. Never fall back to smoke checks.
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 cd "$PROJECT_ROOT"
 BUILD_ROOT="$PROJECT_ROOT/build"
 mkdir -p "$BUILD_ROOT/tmp" "$BUILD_ROOT/ModuleCache" "$BUILD_ROOT/TestResults"

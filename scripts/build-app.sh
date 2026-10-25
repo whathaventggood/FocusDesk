@@ -2,7 +2,10 @@
 # Build an Apple Silicon macOS app without requiring the full Xcode installation.
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The system pwd resolves on-disk casing; Bash's builtin can retain "desktop".
+# Clang module caches must always see the same absolute project path.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
+cd "$PROJECT_ROOT"
 BUILD_ROOT="$PROJECT_ROOT/build"
 CONFIGURATION="${1:-Release}"
 

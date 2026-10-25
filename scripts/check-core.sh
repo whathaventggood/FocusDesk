@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
+cd "$PROJECT_ROOT"
 CHECK_BUILD_DIR="$PROJECT_ROOT/build/core-checks"
 mkdir -p "$CHECK_BUILD_DIR/ModuleCache" "$CHECK_BUILD_DIR/tmp"
 

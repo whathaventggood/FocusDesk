@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-project_root="$(cd "$(dirname "$0")/.." && pwd)"
+project_root="$(cd "$(dirname "$0")/.." && /bin/pwd -P)"
 cd "$project_root"
 mkdir -p build/native-smoke/ModuleCache build/native-smoke/tmp build/native-smoke/FocusDeskSmoke.app/Contents/MacOS
 export TMPDIR="$project_root/build/native-smoke/tmp"

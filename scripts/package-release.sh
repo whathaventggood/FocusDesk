@@ -2,7 +2,7 @@
 # Tested arm64 release candidate. No upload, keychain import, or system changes.
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && /bin/pwd -P)"
 cd "$PROJECT_ROOT"
 PLIST="$PROJECT_ROOT/FocusDesk/Resources/Info.plist"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"

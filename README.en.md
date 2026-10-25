@@ -38,7 +38,7 @@ Review completion rates by date and each day's task snapshot.
 
 - **Desktop square:** drag to move, or drag the bottom-right corner to resize. The default size is 56 points; Settings allows 32–112 points. Size and position persist. Hover expansion does not take keyboard focus.
 - **Current task:** shows its time range, title, details, remaining time, elapsed-time progress, and next task. Gaps show “自由时间” (free time). Elapsed-time progress is separate from completion.
-- **A little encouragement:** the expanded panel randomly selects from 20 original Chinese quotes included with the app. The quote updates every six hours without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. Quotes work offline.
+- **A little encouragement:** the expanded panel randomly selects from 20 Chinese quotes included with the app. The quote updates every six hours without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. Quotes work offline and can be [customized](#customize-quotes).
 - **Today's plan:** click a task card or pencil to edit its time, title, and details in place. “完成并保存” (save, ⌘S) persists the change and updates the desktop view. Viewing and editing share one management window.
 - **Conflict handling:** new tasks prefer available gaps. A fully booked day still allows an empty-time draft. Overlaps list the affected tasks and available gaps. Change the time, use a suggested gap, or preview replacing the occupied interval while preserving uncovered portions of the original tasks. Replacement requires explicit confirmation before atomic saving.
 - **Completion:** manually check or uncheck tasks; completion survives restart. Reaching an end time never automatically marks a task complete.
@@ -64,6 +64,57 @@ Local builds and CI previews use **ad-hoc signing, which is not Developer ID sig
 
 The project uses Swift 5 language mode and targets macOS 13. Run the actual desktop app from `.xcodeproj`; `Package.swift` is only for headless model and persistence tests.
 
+## Customize quotes
+
+### Edit the content and style
+
+Open [FocusDesk/Models/MotivationalQuote.swift](FocusDesk/Models/MotivationalQuote.swift) and edit each entry's `text` in `MotivationalQuote.all`. You can use poetry, quotations, or a mixture of Chinese and Western sources. For example:
+
+```swift
+.init(id: "small-step", text: "天行健，君子以自强不息。"),
+```
+
+- Keep the existing `id` when replacing text. Give new entries unique IDs. Text must be nonempty and should not be duplicated across entries.
+- Put any author or source attribution directly in `text`. Escape double quotes as `\"`, newlines as `\n`, and backslashes as `\\`. Keep entries short and check how they fit in the hover panel.
+- The catalog currently has 20 entries. If adding or removing entries, keep at least two so rotation can exclude the previous quote. Update the expected count in `XCTAssertEqual(MotivationalQuote.all.count, 20)` in [MotivationalQuoteTests.swift](FocusDeskTests/MotivationalQuoteTests.swift), then run the tests.
+
+### Why does the old text still appear?
+
+**Quotes are compiled into the app, rather than loaded from an external text file at runtime.** Saving the Swift file, hovering again, or clearing the cache cannot update an existing app build. Rebuild and launch the new app:
+
+1. Choose **退出** (Quit) from FocusDesk's menu bar menu. Closing the plan window or hiding the square does not quit the app. If running from Xcode, stop the previous run too.
+2. Save your edits, open a terminal in the project root, and run the following. It opens the newly built app only if the build succeeds:
+
+   ```sh
+   ./scripts/build-app.sh Release && open "$PWD/build/Release/FocusDesk.app"
+   ```
+
+3. Hover over the square to check the quote. Alternatively, after quitting the old app, press **⌘R** in Xcode to rebuild and run.
+
+If you normally use the installed app, quit it, copy the new `build/Release/FocusDesk.app` into `/Applications` to replace the old copy, and open it. Building the project does not update the installed copy. An old shortcut or login item may otherwise launch the previous build again.
+
+The six-hour cache stores only the selected **`id` and selection time**, not the text. Changing the selected entry's `text` while keeping its `id` takes effect as soon as you launch the new build; **there is no six-hour wait**. If you edited other entries, the currently selected quote may remain unchanged. To inspect the cached `id`, run:
+
+```sh
+defaults read com.focusdesk.FocusDesk 'motivationalQuote.v1'
+```
+
+### Reset the quote selection
+
+To draw a quote again immediately, first **quit FocusDesk** through its menu bar menu, then run:
+
+```sh
+defaults delete com.focusdesk.FocusDesk 'motivationalQuote.v1'
+```
+
+Open the app containing your new quotes. For the local build above, run this from the project root:
+
+```sh
+open "$PWD/build/Release/FocusDesk.app"
+```
+
+This removes only the quote selection and timing cache. Tasks, history, and window settings are unaffected; do not delete `plan.json`. If the command reports that the key does not exist, there is no cached selection and you can open the app. A reset forgets the previous quote, so the random draw may pick the same one again. A new six-hour period starts at selection time. Quit before resetting so the running app cannot write the cache again.
+
 ## Build and package
 
 Command Line Tools can build the local arm64 app:
@@ -81,6 +132,19 @@ With full Xcode, run real XCTest and produce a versioned candidate:
 ```
 
 Outputs in `build/release/` include `FocusDesk-2.2.0-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
+
+### Build error: a module is defined twice
+
+If `module '_DarwinFoundation1' is defined in both ...` lists paths differing only in casing, such as `Desktop` and `desktop`, the compiler cache contains two spellings of the same directory. Build scripts now normalize the actual path with the system `/bin/pwd -P`, but existing caches need a one-time cleanup.
+
+Once no build is running, run this from the project root:
+
+```sh
+rm -rf ./build/ModuleCache
+./scripts/build-app.sh Release
+```
+
+This removes only regenerable compiler caches, leaving source code, quote content, tasks, and history intact. It is separate from the six-hour quote cache; `defaults delete` is not needed. After a successful build, quit the old app and open the newly generated `build/Release/FocusDesk.app`.
 
 ## Tests and CI
 
@@ -113,7 +177,7 @@ Native checks require a desktop session with WindowServer access; use `bash scri
 
 One versioned JSON document atomically stores the repeating plan and daily history. Legacy task-array files migrate on the first successful save. Back up before upgrading; downgrading requires restoring a compatible backup. Current-day edits reconcile today's snapshot, while past snapshots remain unchanged.
 
-Unreadable data is backed up and saving stops with a recovery message, protecting history from silent replacement. Window position, size, and always-on-top preferences use the `com.focusdesk.FocusDesk` UserDefaults domain. macOS stores the login-item state. The quote and its refresh time are cached separately in UserDefaults without changing `plan.json`, tasks, or completion history. There is no server and plans are not uploaded.
+Unreadable data is backed up and saving stops with a recovery message, protecting history from silent replacement. Window position, size, and always-on-top preferences use the `com.focusdesk.FocusDesk` UserDefaults domain. macOS stores the login-item state. The selected quote's `id` and selection time are cached under the `motivationalQuote.v1` UserDefaults key. Quote text is compiled into the app, not stored in the cache or `plan.json`; tasks and completion history are unaffected. There is no server and plans are not uploaded.
 
 Developers can set `FOCUSDESK_DATA_DIRECTORY` to override the JSON directory. Compiler caches, test reports, and script temporary files remain inside the project's `build/` directory. See [installation instructions](docs/INSTALL.md#english) for backup and recovery.
 
