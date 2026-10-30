@@ -24,7 +24,7 @@ final class PlanStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testQuoteRefreshesAfterSixHoursWithoutChangingPlanOrProgress() throws {
+    func testQuoteRefreshesAfterOneHourWithoutChangingPlanOrProgress() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let preferences = TestDefaults()

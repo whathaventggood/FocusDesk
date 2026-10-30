@@ -12,7 +12,7 @@ A native desktop focus manager for Apple Silicon Macs, built with Swift, SwiftUI
 
 ### Desktop square
 
-A small 56-point square stays on the desktop. Hover to expand a 360 × 500-point task details panel, move into the details to keep them open, and move outside both areas to collapse. “一点鼓励” (A little encouragement) at the bottom displays a short quote.
+A small 56-point square stays on the desktop. Hover to expand a 360 × 500-point task details panel, move into the details to keep them open, and move outside both areas to collapse. A short motivational quote appears at the bottom, with a small “解释与出处” link to its explanation and source.
 
 <img src="docs/screenshots/compact.png" alt="FocusDesk desktop square with hover expansion, dragging, and resizing" width="112">
 
@@ -38,7 +38,7 @@ Review completion rates by date and each day's task snapshot.
 
 - **Desktop square:** drag to move, or drag the bottom-right corner to resize. The default size is 56 points; Settings allows 32–112 points. Size and position persist. Hover expansion does not take keyboard focus.
 - **Current task:** shows its time range, title, details, remaining time, elapsed-time progress, and next task. Gaps show “自由时间” (free time). Elapsed-time progress is separate from completion.
-- **A little encouragement:** the expanded panel randomly selects from 20 Chinese quotes included with the app. The quote updates every six hours without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. Quotes work offline and can be [customized](#customize-quotes).
+- **Motivational quotes:** the expanded panel randomly selects from 20 Chinese quotes included with the app. The quote updates every hour without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. A small “解释与出处” link opens an independent window with an explanation and attribution. Quotes and details work offline and can be [customized](#customize-quotes).
 - **Today's plan:** click a task card or pencil to edit its time, title, and details in place. “完成并保存” (save, ⌘S) persists the change and updates the desktop view. Viewing and editing share one management window.
 - **Conflict handling:** new tasks prefer available gaps. A fully booked day still allows an empty-time draft. Overlaps list the affected tasks and available gaps. Change the time, use a suggested gap, or preview replacing the occupied interval while preserving uncovered portions of the original tasks. Replacement requires explicit confirmation before atomic saving.
 - **Completion:** manually check or uncheck tasks; completion survives restart. Reaching an end time never automatically marks a task complete.
@@ -71,11 +71,13 @@ The project uses Swift 5 language mode and targets macOS 13. Run the actual desk
 Open [FocusDesk/Models/MotivationalQuote.swift](FocusDesk/Models/MotivationalQuote.swift) and edit each entry's `text` in `MotivationalQuote.all`. You can use poetry, quotations, or a mixture of Chinese and Western sources. For example:
 
 ```swift
-.init(id: "small-step", text: "天行健，君子以自强不息。"),
+.init(id: "small-step", text: "天行健，君子以自强不息。",
+      explanation: "自然运行刚健不息，君子也应不断进取。",
+      source: "《周易·乾卦·象传》"),
 ```
 
 - Keep the existing `id` when replacing text. Give new entries unique IDs. Text must be nonempty and should not be duplicated across entries.
-- Put any author or source attribution directly in `text`. Escape double quotes as `\"`, newlines as `\n`, and backslashes as `\\`. Keep entries short and check how they fit in the hover panel.
+- Use `explanation` for the explanation and `source` for the author and work; both appear in the detail window. Escape double quotes as `\"`, newlines as `\n`, and backslashes as `\\`. Keep entries short and check how they fit in the hover panel.
 - The catalog currently has 20 entries. If adding or removing entries, keep at least two so rotation can exclude the previous quote. Update the expected count in `XCTAssertEqual(MotivationalQuote.all.count, 20)` in [MotivationalQuoteTests.swift](FocusDeskTests/MotivationalQuoteTests.swift), then run the tests.
 
 ### Why does the old text still appear?
@@ -93,7 +95,7 @@ Open [FocusDesk/Models/MotivationalQuote.swift](FocusDesk/Models/MotivationalQuo
 
 If you normally use the installed app, quit it, copy the new `build/Release/FocusDesk.app` into `/Applications` to replace the old copy, and open it. Building the project does not update the installed copy. An old shortcut or login item may otherwise launch the previous build again.
 
-The six-hour cache stores only the selected **`id` and selection time**, not the text. Changing the selected entry's `text` while keeping its `id` takes effect as soon as you launch the new build; **there is no six-hour wait**. If you edited other entries, the currently selected quote may remain unchanged. To inspect the cached `id`, run:
+The one-hour cache stores only the selected **`id` and selection time**, not the text. Changing the selected entry's `text` while keeping its `id` takes effect as soon as you launch the new build; **there is no one-hour wait**. If you edited other entries, the currently selected quote may remain unchanged. To inspect the cached `id`, run:
 
 ```sh
 defaults read com.focusdesk.FocusDesk 'motivationalQuote.v1'
@@ -113,7 +115,7 @@ Open the app containing your new quotes. For the local build above, run this fro
 open "$PWD/build/Release/FocusDesk.app"
 ```
 
-This removes only the quote selection and timing cache. Tasks, history, and window settings are unaffected; do not delete `plan.json`. If the command reports that the key does not exist, there is no cached selection and you can open the app. A reset forgets the previous quote, so the random draw may pick the same one again. A new six-hour period starts at selection time. Quit before resetting so the running app cannot write the cache again.
+This removes only the quote selection and timing cache. Tasks, history, and window settings are unaffected; do not delete `plan.json`. If the command reports that the key does not exist, there is no cached selection and you can open the app. A reset forgets the previous quote, so the random draw may pick the same one again. A new one-hour period starts at selection time. Quit before resetting so the running app cannot write the cache again.
 
 ## Build and package
 
@@ -144,7 +146,7 @@ rm -rf ./build/ModuleCache
 ./scripts/build-app.sh Release
 ```
 
-This removes only regenerable compiler caches, leaving source code, quote content, tasks, and history intact. It is separate from the six-hour quote cache; `defaults delete` is not needed. After a successful build, quit the old app and open the newly generated `build/Release/FocusDesk.app`.
+This removes only regenerable compiler caches, leaving source code, quote content, tasks, and history intact. It is separate from the one-hour quote cache; `defaults delete` is not needed. After a successful build, quit the old app and open the newly generated `build/Release/FocusDesk.app`.
 
 ## Tests and CI
 
@@ -154,7 +156,7 @@ This removes only regenerable compiler caches, leaving source code, quote conten
 
 This executes `xcodebuild build test` against the app-hosted XCTest target and preserves `build/TestResults/*.xcresult` and logs. Test environments use project-local data and in-memory preferences to protect everyday plans. With only Command Line Tools the script fails explicitly; smoke checks do not stand in for XCTest.
 
-Tests cover time matching and boundaries, remaining time, free time, midnight, input validation, conflict replacement, completion and undo, date changes, historical snapshots, legacy JSON migration, atomic persistence, corrupt-file protection, and quote rotation across six-hour boundaries, restarts, sleep, clock corrections, and malformed caches.
+Tests cover time matching and boundaries, remaining time, free time, midnight, input validation, conflict replacement, completion and undo, date changes, historical snapshots, legacy JSON migration, atomic persistence, corrupt-file protection, and quote rotation across one-hour boundaries, restarts, sleep, clock corrections, and malformed caches.
 
 GitHub Actions runs the same Xcode tests for `main` pushes, pull requests, and manual dispatches, retaining reports, logs, and an arm64 preview ZIP. A version tag triggers the release workflow; only successful tests allow creation of a **draft release**, which a maintainer reviews before publishing. Check the actual Actions result and XCTest report for the exact commit to confirm whether tests passed.
 

@@ -66,6 +66,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var historyWindow: NSWindow?
+    private var quoteWindow: NSWindow?
     private var statusItem: NSStatusItem?
     private var visibilityMenuItem: NSMenuItem?
     private var subscriptions = Set<AnyCancellable>()
@@ -86,6 +87,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         store.onShowPlan = { [weak self] in self?.showPlan() }
         store.onShowSettings = { [weak self] in self?.showSettings() }
         store.onShowHistory = { [weak self] in self?.showHistory() }
+        store.onShowQuoteDetails = { [weak self] quote in self?.showQuoteDetails(quote) }
         store.onToggleFloating = { [weak self] in self?.toggleFloating() }
         createMainMenu()
         createStatusItem()
@@ -313,6 +315,26 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         store.refresh()
         NSApp.activate(ignoringOtherApps: true)
         historyWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func showQuoteDetails(_ quote: MotivationalQuote) {
+        collapseDetails()
+        if quoteWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false
+            )
+            window.title = "解释与出处 · FocusDesk"
+            window.minSize = NSSize(width: 360, height: 300)
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.titlebarAppearsTransparent = true
+            window.center()
+            quoteWindow = window
+        }
+        quoteWindow?.contentView = NSHostingView(rootView: QuoteDetailView(quote: quote))
+        NSApp.activate(ignoringOtherApps: true)
+        quoteWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc func toggleFloating() {

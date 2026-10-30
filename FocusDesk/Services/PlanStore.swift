@@ -36,6 +36,7 @@ final class PlanStore: ObservableObject {
     var onShowPlan: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onShowHistory: (() -> Void)?
+    var onShowQuoteDetails: ((MotivationalQuote) -> Void)?
     var onToggleFloating: (() -> Void)?
 
     let defaults: UserDefaults

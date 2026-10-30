@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 private final class SmokeDefaults: UserDefaults {
     private var values: [String: Any] = [:]
@@ -176,6 +177,20 @@ private enum NativeSmoke {
 
     @MainActor
     private static func verifyQuoteRefresh(in output: URL) throws {
+        try require(QuoteRotation.refreshInterval == 3_600, "Quotes should refresh every hour")
+        try require(MotivationalQuote.all.allSatisfy { !$0.explanation.isEmpty && !$0.source.isEmpty }, "Every quote needs an explanation and source")
+        let randomPreferences = SmokeDefaults()
+        var draws = [15, 2, 11].makeIterator()
+        let randomRotation = QuoteRotation(defaults: randomPreferences) { _ in draws.next()! }
+        let randomStart = Date(timeIntervalSince1970: 1_792_886_400)
+        try require(randomRotation.quote(at: randomStart) == MotivationalQuote.all[15], "First quote should use the random selection")
+        try require(randomRotation.quote(at: randomStart.addingTimeInterval(3_600)) == MotivationalQuote.all[2], "Hourly selection should jump backward when randomly selected")
+        try require(randomRotation.quote(at: randomStart.addingTimeInterval(7_200)) == MotivationalQuote.all[12], "Hourly selection should jump forward without catalog ordering")
+        let oldPreferences = SmokeDefaults()
+        oldPreferences.set(["id": MotivationalQuote.all[7].id, "selectedAt": randomStart], forKey: QuoteRotation.cacheKey)
+        let migratedQuote = QuoteRotation(defaults: oldPreferences, chooseIndex: { _ in 3 })
+            .quote(at: randomStart.addingTimeInterval(7_200))
+        try require(migratedQuote == MotivationalQuote.all[3], "An existing six-hour cache must immediately use the shorter deadline")
         let directory = output.appendingPathComponent("quotes-\(UUID().uuidString)", isDirectory: true)
         let preferences = SmokeDefaults()
         let start = ISO8601DateFormatter().date(from: "2026-10-25T00:00:00Z")!
@@ -193,12 +208,12 @@ private enum NativeSmoke {
 
         now = start.addingTimeInterval(QuoteRotation.refreshInterval - 1)
         store.refresh()
-        try require(store.motivationalQuote == initialQuote, "The quote must remain stable before six hours")
+        try require(store.motivationalQuote == initialQuote, "The quote must remain stable before one hour")
 
         now = start.addingTimeInterval(QuoteRotation.refreshInterval)
         store.refresh()
         let refreshedQuote = store.motivationalQuote
-        try require(refreshedQuote != initialQuote, "The quote must change exactly when six hours have elapsed")
+        try require(refreshedQuote != initialQuote, "The quote must change exactly when one hour have elapsed")
         try require(try Data(contentsOf: store.storageURL) == savedPlan, "Quote updates must not rewrite the task or completion data")
         store.refresh()
         try require(store.motivationalQuote == refreshedQuote, "Repeated refreshes must preserve the new quote")
@@ -208,14 +223,14 @@ private enum NativeSmoke {
             nowProvider: { now }, calendarProvider: { calendar }, startClock: false
         )
         defer { reloaded.stop() }
-        try require(reloaded.motivationalQuote == refreshedQuote, "The quote must survive relaunch within its six-hour interval")
+        try require(reloaded.motivationalQuote == refreshedQuote, "The quote must survive relaunch within its one-hour interval")
         now = now.addingTimeInterval(3 * QuoteRotation.refreshInterval)
         reloaded.refresh()
         try require(reloaded.motivationalQuote != refreshedQuote, "Waking after multiple intervals must refresh the quote")
         let afterWake = reloaded.motivationalQuote
         reloaded.refresh()
         try require(reloaded.motivationalQuote == afterWake, "A long sleep should trigger only one quote refresh")
-        print("PASS: six-hour quotes, stable hover/relaunch, wake catch-up, unchanged plan data")
+        print("PASS: one-hour quotes, stable hover/relaunch, wake catch-up, unchanged plan data")
     }
 
     @MainActor
@@ -274,6 +289,24 @@ private enum NativeSmoke {
             controller.store.defaults.set(originalQuoteCache, forKey: QuoteRotation.cacheKey)
             controller.store.refresh()
         }
+        let openedQuote = controller.store.motivationalQuote
+        controller.store.onShowQuoteDetails?(openedQuote)
+        let quoteWindows = NSApp.windows.filter { $0.title == "解释与出处 · FocusDesk" }
+        try require(quoteWindows.count == 1, "The quote detail action should open one window")
+        let quoteWindow = quoteWindows[0]
+        try require(quoteWindow.isVisible && quoteWindow.canBecomeKey, "Quote details should remain readable outside the hover panel")
+        try require((quoteWindow.contentView as? NSHostingView<QuoteDetailView>)?.rootView.quote == openedQuote, "Details must display the clicked quote and its matching explanation and source")
+        try require(!detail.isVisible && !controller.store.isExpanded, "Opening quote details should collapse the hover panel")
+        try writePreview(quoteWindow, to: output.appendingPathComponent("quote-details.png"))
+        let nextQuote = MotivationalQuote.all.first { $0.id != openedQuote.id }!
+        controller.store.onShowQuoteDetails?(nextQuote)
+        try require((quoteWindow.contentView as? NSHostingView<QuoteDetailView>)?.rootView.quote == nextQuote, "Reusing the window must update the quote and its source together")
+        try require(NSApp.windows.filter { $0.title == "解释与出处 · FocusDesk" }.count == 1, "Opening another quote should reuse the detail window")
+        try writePreview(quoteWindow, to: output.appendingPathComponent("quote-details-reused.png"))
+        quoteWindow.close()
+        controller.store.onShowQuoteDetails?(openedQuote)
+        try require(quoteWindow.isVisible, "A closed quote detail window should reopen")
+        quoteWindow.close()
         controller.collapseDetails()
 
         controller.setCompactHover(true)

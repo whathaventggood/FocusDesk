@@ -26,16 +26,18 @@ final class MotivationalQuoteTests: XCTestCase {
         (defaults.object(forKey: QuoteRotation.cacheKey) as? [String: Any])?["selectedAt"] as? Date
     }
 
-    func testCatalogHasUniqueStableIDsAndNonemptyOriginalText() {
+    func testCatalogHasUniqueStableIDsAndNonemptyTextExplanationAndSource() {
         XCTAssertEqual(MotivationalQuote.all.count, 20)
         XCTAssertEqual(Set(MotivationalQuote.all.map(\.id)).count, MotivationalQuote.all.count)
         XCTAssertEqual(Set(MotivationalQuote.all.map(\.text)).count, MotivationalQuote.all.count)
         XCTAssertTrue(MotivationalQuote.all.allSatisfy {
-            !$0.id.isEmpty && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !$0.id.isEmpty && [$0.text, $0.explanation, $0.source].allSatisfy {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
         })
     }
 
-    func testFirstSelectionIsCachedAndStaysUntilSixHours() {
+    func testFirstSelectionIsCachedAndStaysUntilOneHour() {
         let defaults = QuoteTestDefaults()
         var selectionCount = 0
         let rotation = QuoteRotation(defaults: defaults) { count in
@@ -51,7 +53,8 @@ final class MotivationalQuoteTests: XCTestCase {
         XCTAssertEqual(defaults.writeCount, 1)
     }
 
-    func testExactlySixHoursSelectsAnotherQuote() {
+    func testExactlyOneHourSelectsAnotherQuote() {
+        XCTAssertEqual(QuoteRotation.refreshInterval, 3_600)
         let defaults = QuoteTestDefaults()
         let rotation = QuoteRotation(defaults: defaults, chooseIndex: { _ in 0 })
         let first = rotation.quote(at: start)
@@ -72,14 +75,14 @@ final class MotivationalQuoteTests: XCTestCase {
             selectionCount += 1
             return 0
         }
-        XCTAssertEqual(restarted.quote(at: start.addingTimeInterval(3 * 60 * 60)), original)
+        XCTAssertEqual(restarted.quote(at: start.addingTimeInterval(30 * 60)), original)
         XCTAssertEqual(selectionCount, 0)
         XCTAssertEqual(cachedDate(defaults), start)
         XCTAssertNotEqual(restarted.quote(at: start.addingTimeInterval(QuoteRotation.refreshInterval)), original)
         XCTAssertEqual(selectionCount, 1)
     }
 
-    func testLongSleepRefreshesOnceAndStartsFreshSixHourInterval() {
+    func testLongSleepRefreshesOnceAndStartsFreshHourInterval() {
         let defaults = QuoteTestDefaults()
         var selectionCount = 0
         let rotation = QuoteRotation(defaults: defaults) { _ in
@@ -144,6 +147,25 @@ final class MotivationalQuoteTests: XCTestCase {
             XCTAssertEqual(quote, MotivationalQuote.all[1])
             XCTAssertEqual(cachedDate(defaults), start)
         }
+    }
+
+    func testRotationUsesRandomDrawsInsteadOfCatalogOrder() {
+        let defaults = QuoteTestDefaults()
+        var draws = [15, 2, 11].makeIterator()
+        let rotation = QuoteRotation(defaults: defaults) { _ in draws.next()! }
+        XCTAssertEqual(rotation.quote(at: start), MotivationalQuote.all[15])
+        XCTAssertEqual(rotation.quote(at: start.addingTimeInterval(3_600)), MotivationalQuote.all[2])
+        XCTAssertEqual(rotation.quote(at: start.addingTimeInterval(7_200)), MotivationalQuote.all[12])
+    }
+
+    func testExistingSixHourCacheUsesShorterDeadlineImmediately() {
+        let defaults = QuoteTestDefaults()
+        let previous = MotivationalQuote.all[7]
+        defaults.set(["id": previous.id, "selectedAt": start], forKey: QuoteRotation.cacheKey)
+        let now = start.addingTimeInterval(2 * 3_600)
+        let quote = QuoteRotation(defaults: defaults, chooseIndex: { _ in 3 }).quote(at: now)
+        XCTAssertNotEqual(quote, previous)
+        XCTAssertEqual(cachedDate(defaults), now)
     }
 
     func testRepeatedRotationsExcludePreviousQuoteFromCandidates() {

@@ -228,29 +228,39 @@ struct FloatingView: View {
             }
             .font(.system(size: 11))
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(accent)
-                    Text("一点鼓励")
-                        .fontWeight(.medium)
-                    Spacer()
-                    Text("每 6 小时更新")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.system(size: 10))
-
+            VStack(alignment: .leading, spacing: 6) {
                 Text(store.motivationalQuote.text)
                     .font(.system(size: 13, weight: .medium))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("motivationalQuote")
+
+                HStack {
+                    Spacer(minLength: 0)
+                    Button {
+                        store.onShowQuoteDetails?(store.motivationalQuote)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("解释与出处")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .medium))
+                        }
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("查看这句话的解释与出处")
+                    .accessibilityIdentifier("quoteDetailsButton")
+                    .accessibilityLabel("查看励志语句的解释与出处")
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
         .padding(22)
         .frame(width: Self.panelSize.width, height: Self.panelSize.height, alignment: .top)
@@ -297,5 +307,46 @@ struct FloatingView: View {
     private func clockString(_ date: Date) -> String {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         return String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
+    }
+}
+
+/// The quote is captured when opened, so an hourly refresh cannot change what is being read.
+struct QuoteDetailView: View {
+    let quote: MotivationalQuote
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text(quote.text)
+                    .font(.system(size: 21, weight: .medium))
+                    .lineSpacing(6)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("quoteDetailText")
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("解释")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(quote.explanation)
+                        .accessibilityIdentifier("quoteExplanation")
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("出处")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(quote.source)
+                        .accessibilityIdentifier("quoteSource")
+                }
+            }
+            .font(.system(size: 14))
+            .lineSpacing(5)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(28)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
