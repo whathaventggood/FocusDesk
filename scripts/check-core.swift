@@ -345,6 +345,126 @@ private struct ProgressChecks {
     }
 }
 
+private struct ActivityTimerChecks {
+    func testRenameDeleteAndDurationSorting() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var document = ActivityTimerDocument()
+        for name in ["阅读", "运动", "练字", "散步"] { try document.addActivity(name: name) }
+        let ids = document.activities.map(\.id)
+        try document.start(activityID: ids[0], mode: .stopwatch, duration: nil, at: start)
+        document.finish(at: start.addingTimeInterval(100))
+        try document.start(activityID: ids[1], mode: .stopwatch, duration: nil, at: start.addingTimeInterval(100))
+        let now = start.addingTimeInterval(140)
+        CoreCheck.equal(document.durationSummaries(at: now, order: .descending).map(\.id), [ids[0], ids[1], ids[2], ids[3]])
+        CoreCheck.equal(document.durationSummaries(at: now, order: .ascending).map(\.id), [ids[2], ids[3], ids[1], ids[0]])
+        let interval = DateInterval(start: start.addingTimeInterval(90), end: now)
+        let range = document.durationSummaries(at: now, in: interval, order: .descending)
+        CoreCheck.equal(range.map(\.id), [ids[1], ids[0], ids[2], ids[3]])
+        CoreCheck.equal(range.map(\.duration), [40, 10, 0, 0])
+        let originalSessions = document.sessions
+        try document.renameActivity(id: ids[0], name: " 阅读书籍 ")
+        CoreCheck.equal(document.activities[0].name, "阅读书籍")
+        CoreCheck.equal(document.sessions, originalSessions)
+        var rejected = false
+        do { try document.renameActivity(id: ids[0], name: "运动") } catch { rejected = true }
+        CoreCheck.equal(rejected, true)
+        rejected = false
+        do { try document.renameActivity(id: ids[0], name: " ") } catch { rejected = true }
+        CoreCheck.equal(rejected, true)
+        try document.deleteActivity(id: ids[1])
+        CoreCheck.nilValue(document.activeSession)
+        CoreCheck.equal(document.sessions, [originalSessions[0]])
+        CoreCheck.equal(document.total(for: Set(ids), at: now), 100)
+        try document.deleteActivity(id: ids[0])
+        CoreCheck.equal(document.sessions.isEmpty, true)
+        try document.addActivity(name: "阅读书籍")
+        CoreCheck.equal(document.total(for: [document.activities.last!.id], at: now), 0)
+        try document.validate()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("timers-management-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = ActivityTimerStore(storageURL: url)
+        try store.save(document)
+        CoreCheck.equal(ActivityTimerStore(storageURL: url).load(), document)
+    }
+
+    func testAccumulationAndRangeClipping() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var document = ActivityTimerDocument()
+        try document.addActivity(name: " 阅读 ")
+        try document.addActivity(name: "运动")
+        let first = document.activities[0].id
+        let second = document.activities[1].id
+        CoreCheck.equal(document.activities[0].name, "阅读")
+        try document.start(activityID: first, mode: .stopwatch, duration: nil, at: start)
+        document.togglePause(at: start.addingTimeInterval(60))
+        CoreCheck.equal(document.activeSession?.elapsed(at: start.addingTimeInterval(200)), 60)
+        document.togglePause(at: start.addingTimeInterval(200))
+        document.finish(at: start.addingTimeInterval(260))
+        try document.start(activityID: second, mode: .stopwatch, duration: nil, at: start.addingTimeInterval(260))
+        let now = start.addingTimeInterval(300)
+        CoreCheck.equal(document.total(for: [first, second], at: now), 160)
+        CoreCheck.equal(document.total(for: [first], at: now, in: DateInterval(start: start.addingTimeInterval(30), end: now)), 90)
+        CoreCheck.equal(document.total(for: [first, second], at: now, in: DateInterval(start: start.addingTimeInterval(30), end: now)), 130)
+        CoreCheck.equal(document.total(for: [], at: now), 0)
+        try document.validate()
+    }
+
+    func testCountdownPauseBoundaryAndWake() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var document = ActivityTimerDocument()
+        try document.addActivity(name: "阅读")
+        let id = document.activities[0].id
+        try document.start(activityID: id, mode: .countdown, duration: 120, at: start)
+        document.togglePause(at: start.addingTimeInterval(30))
+        CoreCheck.equal(document.completeCountdown(at: start.addingTimeInterval(1000)), false)
+        CoreCheck.equal(document.activeSession?.remaining(at: start.addingTimeInterval(1000)), 90)
+        document.togglePause(at: start.addingTimeInterval(1000))
+        CoreCheck.equal(document.completeCountdown(at: start.addingTimeInterval(1089)), false)
+        CoreCheck.equal(document.total(for: [id], at: start.addingTimeInterval(5000)), 120)
+        CoreCheck.equal(document.completeCountdown(at: start.addingTimeInterval(5000)), true)
+        CoreCheck.nilValue(document.activeSession)
+        CoreCheck.equal(document.sessions[0].endedAt, start.addingTimeInterval(1090))
+        CoreCheck.equal(document.completeCountdown(at: start.addingTimeInterval(6000)), false)
+        try document.start(activityID: id, mode: .countdown, duration: 1, at: start.addingTimeInterval(6000))
+        document.togglePause(at: start.addingTimeInterval(6001))
+        CoreCheck.nilValue(document.activeSession)
+        CoreCheck.equal(document.total(for: [id], at: start.addingTimeInterval(7000)), 121)
+        try document.validate()
+    }
+
+    func testPersistenceAndCorruptionProtection() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("timers.json")
+        let store = ActivityTimerStore(storageURL: url)
+        CoreCheck.equal(store.load(), ActivityTimerDocument())
+        var document = ActivityTimerDocument()
+        try document.addActivity(name: "阅读")
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        try document.start(activityID: document.activities[0].id, mode: .stopwatch, duration: nil, at: start)
+        try store.save(document)
+        var reloaded = ActivityTimerStore(storageURL: url).load()
+        CoreCheck.equal(reloaded, document)
+        CoreCheck.equal(reloaded.activeSession?.elapsed(at: start.addingTimeInterval(45)), 45)
+        reloaded.togglePause(at: start.addingTimeInterval(45))
+        try store.save(reloaded)
+        CoreCheck.equal(ActivityTimerStore(storageURL: url).load().activeSession?.elapsed(at: start.addingTimeInterval(1000)), 45)
+        let damaged = Data("broken timer file".utf8)
+        try damaged.write(to: url)
+        let protected = ActivityTimerStore(storageURL: url)
+        CoreCheck.equal(protected.load(), ActivityTimerDocument())
+        CoreCheck.nonNil(protected.blockedSaveReason)
+        var rejected = false
+        do { try protected.save(document) } catch { rejected = true }
+        CoreCheck.equal(rejected, true)
+        CoreCheck.equal(try Data(contentsOf: url), damaged)
+        let backups = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("timers.corrupt-") }
+        CoreCheck.equal(backups.count, 1)
+        CoreCheck.equal(try Data(contentsOf: backups[0]), damaged)
+    }
+}
+
 @main
 private struct CoreCheckRunner {
     static func main() throws {
@@ -379,7 +499,12 @@ private struct CoreCheckRunner {
         progressChecks.testManualCompletionAndUndo()
         progressChecks.testLocalDayAndIDReconciliation()
         try progressChecks.testLegacyPlanMigrationToSingleDocument()
-        print("Foundation checks: 27 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
+        let activityTimerChecks = ActivityTimerChecks()
+        try activityTimerChecks.testRenameDeleteAndDurationSorting()
+        try activityTimerChecks.testAccumulationAndRangeClipping()
+        try activityTimerChecks.testCountdownPauseBoundaryAndWake()
+        try activityTimerChecks.testPersistenceAndCorruptionProtection()
+        print("Foundation checks: 31 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
         exit(CoreCheck.failures == 0 ? 0 : 1)
     }
 }

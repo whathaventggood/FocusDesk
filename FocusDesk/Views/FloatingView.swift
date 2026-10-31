@@ -26,7 +26,7 @@ struct CompactView: View {
             Image(systemName: "timer")
                 .font(.system(size: side * 0.29, weight: .medium))
                 .foregroundStyle(accent)
-            if store.errorMessage != nil {
+            if store.errorMessage != nil || store.activityTimerError != nil {
                 Circle().fill(.orange)
                     .frame(width: max(5, side * 0.1), height: max(5, side * 0.1))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -109,7 +109,7 @@ private struct CompactResizeHandle: NSViewRepresentable {
 }
 
 struct FloatingView: View {
-    static let panelSize = NSSize(width: 360, height: 500)
+    static let panelSize = NSSize(width: 360, height: 580)
 
     @ObservedObject var store: PlanStore
     @State private var completionError: String?
@@ -227,6 +227,8 @@ struct FloatingView: View {
                     .accessibilityLabel("打开专注记录")
             }
             .font(.system(size: 11))
+
+            ActivityTimerStrip(store: store)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(store.motivationalQuote.text)

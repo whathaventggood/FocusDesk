@@ -47,6 +47,7 @@ private enum NativeSmoke {
                     print("Checking native launch callback; windows: \(application.windows.map(\.title))")
                     try verifyPersistence(in: output)
                     try verifyQuoteRefresh(in: output)
+                    try verifyActivityTimers(in: output)
                     try verifyWindows(controller: controller, output: output)
                     print("PASS: \(checkCount) native window, hover, persistence, and recovery checks")
                     print("Preview PNGs: \(output.path)")
@@ -234,6 +235,86 @@ private enum NativeSmoke {
     }
 
     @MainActor
+    private static func verifyActivityTimers(in output: URL) throws {
+        let directory = output.appendingPathComponent("timers-\(UUID().uuidString)")
+        let start = ISO8601DateFormatter().date(from: "2026-10-31T15:59:00Z")!
+        var now = start
+        let preferences = SmokeDefaults()
+        let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { store.stop() }
+        try require(store.addTimedActivity(name: "  阅读  ") == nil, "Adding a named activity should save")
+        let id = store.activityTimers.activities[0].id
+        try require(store.activityTimers.activities[0].name == "阅读", "Activity names should trim whitespace")
+        try require(store.startActivityTimer(activityID: id, mode: .countdown, duration: 120) == nil, "Countdown should start")
+        now = start.addingTimeInterval(30)
+        try require(store.toggleActivityTimerPause() == nil, "Timer should pause")
+        now = start.addingTimeInterval(300)
+        store.refresh()
+        try require(store.activityTimers.activeSession?.remaining(at: now) == 90, "Paused countdown must not advance")
+        let reloaded = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                 nowProvider: { now }, startClock: false)
+        defer { reloaded.stop() }
+        try require(reloaded.activityTimers == store.activityTimers, "Paused timer must survive restart")
+        try require(store.toggleActivityTimerPause() == nil, "Timer should resume")
+        let timersURL = directory.appendingPathComponent("timers.json")
+        let savedTimer = try Data(contentsOf: timersURL)
+        try FileManager.default.removeItem(at: timersURL)
+        try FileManager.default.createDirectory(at: timersURL, withIntermediateDirectories: true)
+        let before = store.activityTimers
+        try require(store.finishActivityTimer() != nil && store.activityTimers == before, "Failed save must not discard an active session")
+        now = start.addingTimeInterval(1000)
+        store.refresh()
+        try require(store.activityTimerError != nil && store.activityTimers.activeSession != nil, "Countdown completion should retry after a failed write")
+        try FileManager.default.removeItem(at: timersURL)
+        try savedTimer.write(to: timersURL)
+        store.refresh()
+        try require(store.activityTimers.activeSession == nil, "Refresh should complete countdown after storage recovers")
+        try require(store.activityTimers.sessions[0].savedDuration == 120, "Sleep and retry must never overcount target duration")
+        try require(store.timerNotice != nil, "Countdown completion should display a notice")
+        try require(store.activityTimerError == nil, "Successful retry should clear the timer storage error")
+        try require(store.activityTimers.sessions[0].endedAt == start.addingTimeInterval(390), "Countdown should end at its real deadline")
+        let completedData = try Data(contentsOf: timersURL)
+        store.refresh()
+        try require(try Data(contentsOf: timersURL) == completedData, "Completed timer should be recorded only once")
+        // A separate same-day instance proves timer operations alone leave the plan file untouched.
+        let currentPlanData = try Data(contentsOf: store.storageURL)
+        try require(store.startActivityTimer(activityID: id, mode: .stopwatch, duration: nil) == nil, "Stopwatch should start after countdown")
+        now = now.addingTimeInterval(45)
+        let runningReload = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                      nowProvider: { now }, startClock: false)
+        defer { runningReload.stop() }
+        try require(runningReload.activityTimers.activeSession?.elapsed(at: now) == 45, "Running stopwatch should survive restart")
+        try require(store.finishActivityTimer() == nil, "Stopwatch should finish")
+        try require(store.activityTimers.total(for: [id], at: now) == 165, "Repeated sessions must accumulate under one activity")
+        try require(try Data(contentsOf: store.storageURL) == currentPlanData, "Timer operations should not change plan data")
+        try require(store.renameTimedActivity(id: id, name: "阅读书籍") == nil, "Renaming should save")
+        try require(store.activityTimers.total(for: [id], at: now) == 165, "Renaming must retain accumulated time")
+        try require(store.addTimedActivity(name: "误输事项") == nil, "A second activity should save")
+        let otherID = store.activityTimers.activities.last!.id
+        try require(store.startActivityTimer(activityID: otherID, mode: .stopwatch, duration: nil) == nil, "Second activity should start")
+        let beforeDelete = store.activityTimers
+        let beforeDeleteData = try Data(contentsOf: timersURL)
+        try FileManager.default.removeItem(at: timersURL)
+        try FileManager.default.createDirectory(at: timersURL, withIntermediateDirectories: true)
+        try require(store.deleteTimedActivity(id: otherID) != nil, "Deletion must report save failures")
+        try require(store.activityTimers == beforeDelete, "A failed deletion must preserve the activity, records and active timer")
+        try require(store.renameTimedActivity(id: id, name: "不应保存") != nil, "Rename must report save failures")
+        try require(store.activityTimers == beforeDelete, "A failed rename must preserve names and records")
+        try FileManager.default.removeItem(at: timersURL)
+        try beforeDeleteData.write(to: timersURL)
+        try require(store.deleteTimedActivity(id: otherID) == nil, "Deletion should save after storage recovers")
+        try require(store.activityTimers.activeSession == nil, "Deleting an active activity should remove its timer")
+        try require(store.activityTimers.activities.count == 1 && store.activityTimers.sessions.count == 2, "Deletion must preserve other activities and records")
+        let managementReload = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                         nowProvider: { now }, startClock: false)
+        defer { managementReload.stop() }
+        try require(managementReload.activityTimers == store.activityTimers, "Rename and deletion should survive restart")
+        try require(try Data(contentsOf: store.storageURL) == currentPlanData, "Managing activities must not change the plan")
+        print("PASS: activity timer pause, resume, restart, countdown deadline, storage retry and cumulative totals")
+    }
+
+    @MainActor
     private static func verifyWindows(controller: AppController, output: URL) throws {
         let panels = NSApp.windows.compactMap { $0 as? NSPanel }
         let compacts = panels.filter { $0.title == "FocusDesk 小方块" }
@@ -344,6 +425,32 @@ private enum NativeSmoke {
         try require(history.count == 1, "Opening history twice should reuse the same window")
         try require(history[0].isVisible && history[0].canBecomeKey, "History should open as a readable native window")
         try writePreview(history[0], to: output.appendingPathComponent("history.png"))
+        try require(controller.store.addTimedActivity(name: "阅读") == nil, "Preview activity should save")
+        let activity = controller.store.activityTimers.activities[0]
+        try require(controller.store.startActivityTimer(activityID: activity.id, mode: .countdown, duration: 1500) == nil, "Preview timer should start")
+        controller.showTimers()
+        controller.showTimers()
+        let timers = NSApp.windows.filter { $0.title == "事项计时 · FocusDesk" }
+        try require(timers.count == 1 && timers[0].isVisible && timers[0].canBecomeKey, "Timers should reuse a native interactive window")
+        try writePreview(timers[0], to: output.appendingPathComponent("timers.png"))
+        timers[0].setContentSize(NSSize(width: 680, height: 540))
+        try writePreview(timers[0], to: output.appendingPathComponent("timers-small.png"))
+        timers[0].close()
+        controller.showTimers()
+        try require(timers[0].isVisible, "Closed timers window should reopen")
+        timers[0].close()
+        controller.setCompactHover(true)
+        try writePreview(detail, to: output.appendingPathComponent("floating-timer.png"))
+        try require(controller.store.toggleActivityTimerPause() == nil, "Widget timer should pause")
+        try writePreview(detail, to: output.appendingPathComponent("floating-timer-paused.png"))
+        controller.collapseDetails()
+        try require(controller.store.finishActivityTimer() == nil, "Preview timer should finish")
+        try require(controller.store.addTimedActivity(name: "运动") == nil, "Second preview activity should save")
+        try require(controller.store.addTimedActivity(name: "练字") == nil, "Third preview activity should save")
+        timers[0].setContentSize(NSSize(width: 800, height: 900))
+        controller.showTimers()
+        try writePreview(timers[0], to: output.appendingPathComponent("timers-management.png"))
+        timers[0].close()
         controller.store.setLaunchAtLogin(true)
         try require(controller.store.errorMessage?.contains("测试模式") == true, "Smoke mode must block system login-item changes")
         print("PASS: nonactivating compact/detail panels, hover transitions, resize, geometry, reusable plan/settings/history windows")

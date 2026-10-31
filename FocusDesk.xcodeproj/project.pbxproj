@@ -26,6 +26,10 @@
 		A10000000000000000000019 /* PlanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* PlanStoreTests.swift */; };
 		A10000000000000000000022 /* MotivationalQuote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* MotivationalQuote.swift */; };
 		A10000000000000000000023 /* MotivationalQuoteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* MotivationalQuoteTests.swift */; };
+		A10000000000000000000024 /* ActivityTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* ActivityTimer.swift */; };
+		A10000000000000000000025 /* ActivityTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* ActivityTimerStore.swift */; };
+		A10000000000000000000026 /* ActivityTimersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* ActivityTimersView.swift */; };
+		A10000000000000000000027 /* ActivityTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* ActivityTimerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +66,10 @@
 		A20000000000000000000019 /* PlanStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanStoreTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000022 /* MotivationalQuote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotivationalQuote.swift; sourceTree = "<group>"; };
 		A20000000000000000000023 /* MotivationalQuoteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotivationalQuoteTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000024 /* ActivityTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTimer.swift; sourceTree = "<group>"; };
+		A20000000000000000000025 /* ActivityTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTimerStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000026 /* ActivityTimersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTimersView.swift; sourceTree = "<group>"; };
+		A20000000000000000000027 /* ActivityTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityTimerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,19 +107,19 @@
 		};
 		A50000000000000000000004 /* Models */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */, A20000000000000000000013 /* PlanEditing.swift */, A20000000000000000000014 /* DailyProgress.swift */, A20000000000000000000022 /* MotivationalQuote.swift */,);
+			children = (A20000000000000000000024 /* ActivityTimer.swift */, A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */, A20000000000000000000013 /* PlanEditing.swift */, A20000000000000000000014 /* DailyProgress.swift */, A20000000000000000000022 /* MotivationalQuote.swift */,);
 			path = Models;
 			sourceTree = "<group>";
 		};
 		A50000000000000000000005 /* Services */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000005 /* ScheduleEngine.swift */, A20000000000000000000006 /* PlanStore.swift */, A20000000000000000000015 /* ProgressStore.swift */,);
+			children = (A20000000000000000000025 /* ActivityTimerStore.swift */, A20000000000000000000005 /* ScheduleEngine.swift */, A20000000000000000000006 /* PlanStore.swift */, A20000000000000000000015 /* ProgressStore.swift */,);
 			path = Services;
 			sourceTree = "<group>";
 		};
 		A50000000000000000000006 /* Views */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000007 /* FloatingView.swift */, A20000000000000000000008 /* PlanView.swift */, A20000000000000000000009 /* SettingsView.swift */, A20000000000000000000016 /* HistoryView.swift */,);
+			children = (A20000000000000000000026 /* ActivityTimersView.swift */, A20000000000000000000007 /* FloatingView.swift */, A20000000000000000000008 /* PlanView.swift */, A20000000000000000000009 /* SettingsView.swift */, A20000000000000000000016 /* HistoryView.swift */,);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -123,7 +131,7 @@
 		};
 		A50000000000000000000008 /* FocusDeskTests */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000010 /* ScheduleEngineTests.swift */, A20000000000000000000012 /* PlanValidationTests.swift */, A20000000000000000000017 /* PlanEditingTests.swift */, A20000000000000000000018 /* ProgressTests.swift */, A20000000000000000000019 /* PlanStoreTests.swift */, A20000000000000000000023 /* MotivationalQuoteTests.swift */,);
+			children = (A20000000000000000000027 /* ActivityTimerTests.swift */, A20000000000000000000010 /* ScheduleEngineTests.swift */, A20000000000000000000012 /* PlanValidationTests.swift */, A20000000000000000000017 /* PlanEditingTests.swift */, A20000000000000000000018 /* ProgressTests.swift */, A20000000000000000000019 /* PlanStoreTests.swift */, A20000000000000000000023 /* MotivationalQuoteTests.swift */,);
 			path = FocusDeskTests;
 			sourceTree = "<group>";
 		};
@@ -195,6 +203,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000026 /* ActivityTimersView.swift in Sources */,
+				A10000000000000000000025 /* ActivityTimerStore.swift in Sources */,
+				A10000000000000000000024 /* ActivityTimer.swift in Sources */,
 				A10000000000000000000001 /* FocusDeskApp.swift in Sources */,
 				A10000000000000000000002 /* AppController.swift in Sources */,
 				A10000000000000000000003 /* PlanTask.swift in Sources */,
@@ -216,6 +227,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000027 /* ActivityTimerTests.swift in Sources */,
 				A10000000000000000000010 /* ScheduleEngineTests.swift in Sources */,
 				A10000000000000000000012 /* PlanValidationTests.swift in Sources */,
 				A10000000000000000000017 /* PlanEditingTests.swift in Sources */,
@@ -275,13 +287,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
@@ -294,13 +306,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;

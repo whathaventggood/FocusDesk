@@ -12,6 +12,8 @@ export TMPDIR="$CHECK_BUILD_DIR/tmp"
 
 xcrun swiftc -swift-version 5 \
     -module-cache-path "$CHECK_BUILD_DIR/ModuleCache" \
+    "$PROJECT_ROOT/FocusDesk/Models/ActivityTimer.swift" \
+    "$PROJECT_ROOT/FocusDesk/Services/ActivityTimerStore.swift" \
     "$PROJECT_ROOT/FocusDesk/Models/PlanTask.swift" \
     "$PROJECT_ROOT/FocusDesk/Models/DefaultPlan.swift" \
     "$PROJECT_ROOT/FocusDesk/Models/PlanEditing.swift" \

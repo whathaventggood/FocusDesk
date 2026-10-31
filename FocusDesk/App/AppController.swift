@@ -66,6 +66,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var historyWindow: NSWindow?
+    private var timersWindow: NSWindow?
     private var quoteWindow: NSWindow?
     private var statusItem: NSStatusItem?
     private var visibilityMenuItem: NSMenuItem?
@@ -87,6 +88,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         store.onShowPlan = { [weak self] in self?.showPlan() }
         store.onShowSettings = { [weak self] in self?.showSettings() }
         store.onShowHistory = { [weak self] in self?.showHistory() }
+        store.onShowTimers = { [weak self] in self?.showTimers() }
         store.onShowQuoteDetails = { [weak self] quote in self?.showQuoteDetails(quote) }
         store.onToggleFloating = { [weak self] in self?.toggleFloating() }
         createMainMenu()
@@ -317,6 +319,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         historyWindow?.makeKeyAndOrderFront(nil)
     }
 
+    @objc func showTimers() {
+        collapseDetails()
+        if timersWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 760),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
+            )
+            window.title = "事项计时 · FocusDesk"
+            window.minSize = NSSize(width: 700, height: 560)
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.titlebarAppearsTransparent = true
+            window.contentView = NSHostingView(rootView: ActivityTimersView(store: store))
+            window.center()
+            timersWindow = window
+        }
+        store.refresh()
+        NSApp.activate(ignoringOtherApps: true)
+        timersWindow?.makeKeyAndOrderFront(nil)
+    }
+
     func showQuoteDetails(_ quote: MotivationalQuote) {
         collapseDetails()
         if quoteWindow == nil {
@@ -445,6 +468,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         visibilityMenuItem = addMenuItem("隐藏小方块", action: #selector(toggleFloating), to: menu)
         addMenuItem("今日计划…", action: #selector(showPlan), to: menu)
         addMenuItem("专注记录…", action: #selector(showHistory), to: menu)
+        addMenuItem("事项计时…", action: #selector(showTimers), to: menu)
         addMenuItem("设置…", action: #selector(showSettings), to: menu)
         menu.addItem(.separator())
         addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: menu)
@@ -470,6 +494,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let appMenu = NSMenu(title: "FocusDesk")
         addMenuItem("今日计划…", action: #selector(showPlan), key: "1", to: appMenu)
         addMenuItem("专注记录…", action: #selector(showHistory), key: "2", to: appMenu)
+        addMenuItem("事项计时…", action: #selector(showTimers), key: "3", to: appMenu)
         addMenuItem("设置…", action: #selector(showSettings), key: ",", to: appMenu)
         appMenu.addItem(.separator())
         addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: appMenu)

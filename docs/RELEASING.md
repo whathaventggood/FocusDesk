@@ -2,15 +2,16 @@
 
 [返回 README](../README.md) · [Installation in English](INSTALL.md#english)
 
-`v2.2.0`（构建号 `4`）是当前准备的版本号，新增悬停详情底部的“一点鼓励”及每 6 小时更新的本地语录。仓库中的脚本和工作流只能准备候选包；是否通过 XCTest、是否经过 Apple 公证以及是否已经公开发布，均须查看实际运行结果。不要仅凭版本号或 README 徽章判断。
+`v2.3.1`（构建号 `6`）是当前准备的版本号，新增计时事项删除、名称修改及累计时长升降序排序。仓库中的脚本和工作流只能准备候选包；是否通过 XCTest、是否经过 Apple 公证以及是否已经公开发布，均须查看实际运行结果。不要仅凭版本号或 README 徽章判断。
 
 ## 发布前核对
 
-1. 在 `FocusDesk/Resources/Info.plist` 中设置 `CFBundleShortVersionString` 与递增的 `CFBundleVersion`，同步 `FocusDesk.xcodeproj` 的 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`，更新 `CHANGELOG.md`。当前版本应为 `2.2.0`、构建号 `4`。
+1. 在 `FocusDesk/Resources/Info.plist` 中设置 `CFBundleShortVersionString` 与递增的 `CFBundleVersion`，同步 `FocusDesk.xcodeproj` 的 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`，更新 `CHANGELOG.md`。当前版本应为 `2.3.1`、构建号 `6`。
 2. 使用完整 Xcode 在 macOS 桌面会话中运行 `./scripts/test-xcode.sh`；该脚本执行 app-hosted XCTest，并把 `.xcresult` 和日志写入 `build/TestResults/`。只有 Command Line Tools 时会明确失败。
 3. 检查 GitHub Actions 的 **macOS CI**：目标提交的 `build-and-test` 必须通过。检查 XCTest 报告和 arm64 预览包，并在真实 Mac 上手动验收悬停、跨应用显示、拖动、缩放、睡眠唤醒、编辑冲突和历史记录。
 4. 核对 README、安装说明、截图和隐私数据处理。保存一份旧版 `plan.json` 以验证迁移；不要把个人计划文件提交到仓库。
-5. 验收 360 × 500 点详情面板底部的“一点鼓励”：显示内置中文语录，每 6 小时更新且避免相邻重复，同一周期重启保持原句，长睡眠唤醒后及时刷新。确认语录缓存使用独立 `UserDefaults` 数据，不改动计划和历史记录。用受控时间测试验证 6 小时边界，并补充真实界面与睡眠唤醒验收。
+5. 验收事项计时：自定义名称、修改名称保留记录、删除确认与保存失败回滚、范围内时长升降序、暂停与继续、提前结束、倒计时到点、睡眠与重启恢复、跨日范围统计及多事项合计。确认 `timers.json` 独立保存，保存失败不丢失原状态，损坏文件不被覆盖。
+6. 验收 360 × 580 点详情面板底部的“一点鼓励”：显示内置中文语录，每小时更新且避免相邻重复，同一周期重启保持原句，长睡眠唤醒后及时刷新。确认语录缓存使用独立 `UserDefaults` 数据，不改动计划和历史记录。用受控时间测试验证 1 小时边界，并补充真实界面与睡眠唤醒验收。
 
 本机有完整 Xcode 时，可先运行 `./scripts/package-release.sh`，它先执行相同的 XCTest，再构建 arm64 候选包、SHA-256、安装说明和发布说明。默认输出使用 ad-hoc 临时签名，**没有 Developer ID 签名，也没有 Apple 公证**。
 
@@ -19,13 +20,13 @@
 将通过验证的提交合入 `main` 后，检查版本标签尚不存在，再由维护者执行：
 
 ```sh
-git tag -a v2.2.0 -m "FocusDesk 2.2.0"
-git push origin v2.2.0
+git tag -a v2.3.1 -m "FocusDesk 2.3.1"
+git push origin v2.3.1
 ```
 
 标签必须与 `Info.plist` 的版本号一致。不要移动已发布的标签；如需修正发布内容，请递增版本与构建号。`Release candidate` 工作流在 GitHub 的 `macos-15` 运行器上执行真正的 XCTest；失败时不创建草稿。测试通过后，它构建 arm64 候选包，校验并上传 ZIP、`SHA256SUMS.txt` 和 `INSTALL.md`，随后创建 **draft Release**。草稿不会自动公开。
 
-到仓库的 **Actions** 查看对应标签运行结果，再到 **Releases → Drafts** 检查附件和说明。下载 `FocusDesk-2.2.0-arm64.zip` 及校验文件，用 `shasum -a 256 -c SHA256SUMS.txt` 核对，再在干净的 macOS 用户环境中验证安装和首次启动。维护者完成检查后，手动点击 **Publish release**。
+到仓库的 **Actions** 查看对应标签运行结果，再到 **Releases → Drafts** 检查附件和说明。下载 `FocusDesk-2.3.1-arm64.zip` 及校验文件，用 `shasum -a 256 -c SHA256SUMS.txt` 核对，再在干净的 macOS 用户环境中验证安装和首次启动。维护者完成检查后，手动点击 **Publish release**。
 
 ## 签名与公证
 
@@ -46,4 +47,4 @@ git push origin v2.2.0
 
 ## English summary
 
-The current candidate is `v2.2.0`, build `4`, adding original Chinese encouragement quotes that update every six hours. Verify the 360 × 500-point details panel, quote persistence across restarts, no consecutive repeats, refresh after sleep, and separation from plan data. Use full Xcode to run `./scripts/test-xcode.sh`, then check the exact commit's macOS CI result and test artifacts. Once validated, tag the matching version and push that tag. The release workflow runs XCTest again, packages an arm64 candidate, and creates a **draft** GitHub Release for manual inspection and publication. With no signing secrets it produces an explicitly labeled ad-hoc, unnotarized build. With all six credentials it must pass Developer ID signing, Apple notarization, stapling, and verification before creating the draft. Partial credentials fail the workflow. See [installation and backup instructions](INSTALL.md#english).
+The current candidate is `v2.3.1`, build `6`, adding activity deletion, renaming, and ascending/descending duration sorting. Verify the 360 × 580-point details panel, quote persistence across restarts, no consecutive repeats, refresh after sleep, and separation from plan data. Use full Xcode to run `./scripts/test-xcode.sh`, then check the exact commit's macOS CI result and test artifacts. Once validated, tag the matching version and push that tag. The release workflow runs XCTest again, packages an arm64 candidate, and creates a **draft** GitHub Release for manual inspection and publication. With no signing secrets it produces an explicitly labeled ad-hoc, unnotarized build. With all six credentials it must pass Developer ID signing, Apple notarization, stapling, and verification before creating the draft. Partial credentials fail the workflow. See [installation and backup instructions](INSTALL.md#english).

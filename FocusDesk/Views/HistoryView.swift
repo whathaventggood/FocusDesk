@@ -25,6 +25,7 @@ struct HistoryView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("事项时长") { store.onShowTimers?() }
                 Button("今日计划") { store.onShowPlan?() }
             }
             .padding(24)

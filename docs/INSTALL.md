@@ -39,9 +39,11 @@
 ~/Library/Application Support/FocusDesk/plan.json
 ```
 
-先退出应用。在 Finder 按 **⌘⇧G**，输入上面路径的父目录 `~/Library/Application Support/FocusDesk`，复制 `plan.json` 到自己选定的备份位置。恢复时先退出应用，把备份复制回原位置，再打开。文件中可能包含私人任务说明，请自行妥善保存。
+先退出应用。在 Finder 按 **⌘⇧G**，输入上面路径的父目录 `~/Library/Application Support/FocusDesk`，复制 `plan.json` 和 `timers.json`（如存在）到自己选定的备份位置。恢复时先退出应用，把备份复制回原位置，再打开。`timers.json` 保存自定义事项、计时片段与运行/暂停状态；恢复运行中的计时会包含备份后经过的时间，备份前可先暂停。文件中可能包含私人任务说明，请自行妥善保存。
 
-损坏文件会在同目录保留 `plan.corrupt-*.json` 备份，并阻止继续保存。优先恢复可读备份；没有备份且愿意清空现有计划与历史时，可在设置中使用显式恢复默认功能并确认。恢复默认需要先成功备份原文件，失败时不会覆盖。
+计时文件损坏会保留 `timers.corrupt-*.json` 并停止计时保存，恢复可读的 `timers.json` 后重启即可；恢复默认计划不会清除计时记录。
+
+计划损坏文件会在同目录保留 `plan.corrupt-*.json` 备份，并阻止继续保存。优先恢复可读备份；没有备份且愿意清空现有计划与历史时，可在设置中使用显式恢复默认功能并确认。恢复默认需要先成功备份原文件，失败时不会覆盖。
 
 方块位置、大小和置顶偏好由系统 `UserDefaults` 保存，单独备份 `plan.json` 不含这些界面偏好；登录项由 macOS 管理。
 
@@ -71,12 +73,12 @@ For damaged-app or malware alerts, stop and verify the source and checksum. Do n
 
 ### Update, back up, and recover
 
-Quit FocusDesk from its menu bar, back up `~/Library/Application Support/FocusDesk/plan.json`, then replace the app in Applications. Plans, completion history, and preferences persist.
+Quit FocusDesk from its menu bar, back up `plan.json` and `timers.json` (if present) in `~/Library/Application Support/FocusDesk`, then replace the app in Applications. Plans, completion history, and preferences persist.
 
-The JSON contains private task details. Quit before copying or restoring it. In Finder, **⌘⇧G** opens `~/Library/Application Support/FocusDesk`; copy `plan.json` to your chosen backup location. Restore a known-good copy there before restarting.
+The JSON contains private task details. Quit before copying or restoring it. In Finder, **⌘⇧G** opens `~/Library/Application Support/FocusDesk`; copy `plan.json` and `timers.json` (if present) to your chosen backup location. Timers include activity names, segments, and running/paused state; pause before backing up to avoid counting time elapsed since the backup when restoring. Restore a known-good copy there before restarting.
 
 Earlier task-array files migrate to a versioned plan-and-history document on saving. Downgrading requires a backup compatible with the old app. Window preferences are stored separately in UserDefaults, and login items are managed by macOS.
 
-Unreadable files are preserved as `plan.corrupt-*.json` and further saves stop. Restore a good backup first. Settings also offers an explicit, confirmed reset to defaults, which clears the current plan and history only after successfully backing up the unreadable source.
+Unreadable timer files are preserved as `timers.corrupt-*.json` and timer saves stop. Restore a readable `timers.json` and restart; resetting the default plan leaves timer records intact. Unreadable plan files are preserved as `plan.corrupt-*.json` and further saves stop. Restore a good backup first. Settings also offers an explicit, confirmed reset to defaults, which clears the current plan and history only after successfully backing up the unreadable source.
 
 To uninstall, disable launch at login, quit from the menu bar, and remove the app. Data remains until you choose to remove the data directory after backup.

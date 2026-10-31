@@ -12,7 +12,7 @@ A native desktop focus manager for Apple Silicon Macs, built with Swift, SwiftUI
 
 ### Desktop square
 
-A small 56-point square stays on the desktop. Hover to expand a 360 × 500-point task details panel, move into the details to keep them open, and move outside both areas to collapse. A short motivational quote appears at the bottom, with a small “解释与出处” link to its explanation and source.
+A small 56-point square stays on the desktop. Hover to expand a 360 × 580-point task details panel, move into the details to keep them open, and move outside both areas to collapse. A short motivational quote appears at the bottom, with a small “解释与出处” link to its explanation and source.
 
 <img src="docs/screenshots/compact.png" alt="FocusDesk desktop square with hover expansion, dragging, and resizing" width="112">
 
@@ -34,17 +34,26 @@ Review completion rates by date and each day's task snapshot.
 
 <img src="docs/screenshots/history.png" alt="FocusDesk history showing daily completion rates and task snapshots" width="900">
 
+### Activity timers and accumulated time
+
+Name an activity, run a stopwatch or countdown, pause and resume, and sum time by activity and date range.
+
+<img src="docs/screenshots/timers.png" alt="Activity countdown, stopwatch, and cumulative time statistics" width="800">
+
 ## Usage
 
 - **Desktop square:** drag to move, or drag the bottom-right corner to resize. The default size is 56 points; Settings allows 32–112 points. Size and position persist. Hover expansion does not take keyboard focus.
 - **Current task:** shows its time range, title, details, remaining time, elapsed-time progress, and next task. Gaps show “自由时间” (free time). Elapsed-time progress is separate from completion.
+- **Activity timers (2.3.0):** open “事项计时…” from the menu bar, press ⌘3, or use the desktop panel entry. Add a named activity, then start a stopwatch or a duration countdown (1 second to 7 days). Pause, resume, or finish early. Countdown completion records the elapsed time automatically, displays a notice, and plays a sound while the app runs. Only one session can remain active, including paused sessions.
+- **Activity management (2.3.1):** click the pencil beside an activity to correct its name while retaining its history. Click the trash icon to delete it after confirmation. Deletion clears that activity and all its sessions, including any running or paused timer, while preserving other activities.
+- **Accumulated time:** repeated sessions accumulate by activity. View today, the last 7 days, 30 days, or all time; select multiple activities to sum their durations. Sort by duration ascending or descending within the selected date range; ties retain creation order. Totals include live sessions, split cross-midnight intervals by actual occurrence, and exclude pauses. Running timers include sleep and time while the app is closed, and resume after relaunch; pause before leaving if needed.
 - **Motivational quotes:** the expanded panel randomly selects from 20 Chinese quotes included with the app. The quote updates every hour without consecutive repeats. Restarting within the same period preserves the quote; waking after a long sleep refreshes it according to the actual time. A small “解释与出处” link opens an independent window with an explanation and attribution. Quotes and details work offline and can be [customized](#customize-quotes).
 - **Today's plan:** click a task card or pencil to edit its time, title, and details in place. “完成并保存” (save, ⌘S) persists the change and updates the desktop view. Viewing and editing share one management window.
 - **Conflict handling:** new tasks prefer available gaps. A fully booked day still allows an empty-time draft. Overlaps list the affected tasks and available gaps. Change the time, use a suggested gap, or preview replacing the occupied interval while preserving uncovered portions of the original tasks. Replacement requires explicit confirmation before atomic saving.
 - **Completion:** manually check or uncheck tasks; completion survives restart. Reaching an end time never automatically marks a task complete.
 - **History:** inspect the last 7 days, 30 days, or all recorded days. Completion rate is completed task count divided by planned task count, including breaks and sleep. Range totals are weighted by total task count, rather than averaging daily percentages. Days without records are omitted rather than recorded as zero.
 - **Daily schedule:** repeats each day. Today's edits update today's snapshot. Past task names, times, and completion states retain their snapshots. Day changes and wake events recalculate from the actual local date and system clock.
-- **Menu bar:** show or hide the desktop component, open the plan, focus history, and settings, or quit. The app has no Dock icon and keeps running when management windows close.
+- **Menu bar:** show or hide the desktop component, open the plan, activity timers, focus history, and settings, or quit. The app has no Dock icon and keeps running when management windows close.
 - **Settings:** always on top and launch at login. Login startup uses `SMAppService.mainApp`; install the app in a stable location and enable it yourself.
 
 Times use 24-hour `HH:mm` format. End time must be later than start time; an end of `00:00` means the end of the day (24:00). Zero duration, malformed time, empty titles, and unconfirmed overlaps are rejected. Adjacent tasks may share a boundary. First launch includes 28 study and daily-life tasks.
@@ -133,7 +142,7 @@ With full Xcode, run real XCTest and produce a versioned candidate:
 ./scripts/package-release.sh
 ```
 
-Outputs in `build/release/` include `FocusDesk-2.2.0-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
+Outputs in `build/release/` include `FocusDesk-2.3.1-arm64.zip`, SHA-256, installation instructions, and release notes. Failing tests prevent packaging. You can also archive through **Product → Archive**. See the [release process](docs/RELEASING.md) for distribution signing, notarization, and draft review.
 
 ### Build error: a module is defined twice
 
@@ -175,6 +184,7 @@ Native checks require a desktop session with WindowServer access; use `bash scri
 
 ```text
 ~/Library/Application Support/FocusDesk/plan.json
+~/Library/Application Support/FocusDesk/timers.json
 ```
 
 One versioned JSON document atomically stores the repeating plan and daily history. Legacy task-array files migrate on the first successful save. Back up before upgrading; downgrading requires restoring a compatible backup. Current-day edits reconcile today's snapshot, while past snapshots remain unchanged.
@@ -200,3 +210,5 @@ scripts/        Build, Xcode test, and release-candidate scripts
 CHANGELOG.md
 docs/           Installation, release instructions, screenshots
 ```
+
+Activity names, timing segments, and active/paused sessions are saved atomically in `timers.json`, separately from the compatible `plan.json`. Back up both files while the app is closed. Unreadable timer files are preserved with a `timers.corrupt-*.json` backup and further timer saves stop; restore a readable copy and restart. Resetting the default plan does not erase timer records.

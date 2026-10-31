@@ -24,6 +24,66 @@ final class PlanStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testActivityCountdownCompletesOnRestartAndPreservesPlan() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var now = date("2026-10-31T02:00:00Z")
+        let preferences = TestDefaults()
+        let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { store.stop() }
+        let planData = try Data(contentsOf: store.storageURL)
+        XCTAssertNil(store.addTimedActivity(name: "阅读"))
+        let id = store.activityTimers.activities[0].id
+        XCTAssertNil(store.startActivityTimer(activityID: id, mode: .countdown, duration: 120))
+        now = now.addingTimeInterval(10_000)
+        let reloaded = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                 nowProvider: { now }, startClock: false)
+        defer { reloaded.stop() }
+        XCTAssertNil(reloaded.activityTimers.activeSession)
+        XCTAssertNotNil(reloaded.timerNotice)
+        XCTAssertEqual(reloaded.activityTimers.total(for: [id], at: now), 120)
+        XCTAssertEqual(try Data(contentsOf: store.storageURL), planData)
+        let persisted = ActivityTimerStore(storageURL: directory.appendingPathComponent("timers.json")).load()
+        XCTAssertEqual(persisted, reloaded.activityTimers)
+        reloaded.refresh()
+        XCTAssertEqual(reloaded.activityTimers.sessions.count, 1)
+    }
+
+    @MainActor
+    func testActivityTimerWriteFailureRollsBackAndCountdownCompletionRetries() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var now = date("2026-10-31T02:00:00Z")
+        let store = PlanStore(storageDirectory: directory, defaults: TestDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { store.stop() }
+        XCTAssertNil(store.addTimedActivity(name: "阅读"))
+        let id = store.activityTimers.activities[0].id
+        XCTAssertNil(store.startActivityTimer(activityID: id, mode: .countdown, duration: 60))
+        let url = directory.appendingPathComponent("timers.json")
+        let data = try Data(contentsOf: url)
+        let before = store.activityTimers
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        now = now.addingTimeInterval(30)
+        XCTAssertNotNil(store.toggleActivityTimerPause())
+        XCTAssertEqual(store.activityTimers, before)
+        now = now.addingTimeInterval(100)
+        store.refresh()
+        XCTAssertEqual(store.activityTimers, before)
+        XCTAssertNotNil(store.activityTimerError)
+        XCTAssertEqual(store.activityTimers.total(for: [id], at: now), 60)
+        try FileManager.default.removeItem(at: url)
+        try data.write(to: url)
+        store.refresh()
+        XCTAssertNil(store.activityTimers.activeSession)
+        XCTAssertNil(store.activityTimerError)
+        XCTAssertNotNil(store.timerNotice)
+        XCTAssertEqual(store.activityTimers.sessions[0].savedDuration, 60)
+    }
+
+    @MainActor
     func testQuoteRefreshesAfterOneHourWithoutChangingPlanOrProgress() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

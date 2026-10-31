@@ -20,6 +20,9 @@ final class PlanStore: ObservableObject {
     @Published private(set) var todayProgress: DailyProgress
     @Published private(set) var history: [DailyProgress]
     @Published private(set) var needsDataRecovery = false
+    @Published private(set) var activityTimers: ActivityTimerDocument
+    @Published private(set) var activityTimerError: String?
+    @Published private(set) var timerNotice: String?
 
     @Published var compactSize: Double {
         didSet {
@@ -36,6 +39,7 @@ final class PlanStore: ObservableObject {
     var onShowPlan: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onShowHistory: (() -> Void)?
+    var onShowTimers: (() -> Void)?
     var onShowQuoteDetails: ((MotivationalQuote) -> Void)?
     var onToggleFloating: (() -> Void)?
 
@@ -45,6 +49,7 @@ final class PlanStore: ObservableObject {
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private let allowsLoginItemChanges: Bool
     private let progressStore: ProgressStore
+    private let activityTimerStore: ActivityTimerStore
     private let quoteRotation: QuoteRotation
     private let nowProvider: () -> Date
     private let calendarProvider: () -> Calendar
@@ -72,6 +77,10 @@ final class PlanStore: ObservableObject {
         )[0].appendingPathComponent("FocusDesk", isDirectory: true)
         storageURL = directory.appendingPathComponent("plan.json")
         progressStore = ProgressStore(storageURL: storageURL)
+        let activityTimerStore = ActivityTimerStore(storageURL: directory.appendingPathComponent("timers.json"))
+        self.activityTimerStore = activityTimerStore
+        activityTimers = activityTimerStore.load()
+        activityTimerError = activityTimerStore.blockedSaveReason
         tasks = initialTasks
         now = date
         snapshot = ScheduleEngine.snapshot(tasks: initialTasks, at: date, calendar: calendar)
@@ -99,6 +108,7 @@ final class PlanStore: ObservableObject {
                 errorMessage = saveFailure(error)
             }
         }
+        refreshActivityTimer(at: date)
         refreshLoginStatus()
         if startClock { beginClock() }
     }
@@ -106,6 +116,7 @@ final class PlanStore: ObservableObject {
     /// Updates from the wall clock, including after a wake or manual clock change.
     func refresh() {
         now = nowProvider()
+        refreshActivityTimer(at: now)
         let quote = quoteRotation.quote(at: now)
         if motivationalQuote != quote { motivationalQuote = quote }
         let calendar = DailyProgress.localCalendar(calendarProvider())
@@ -123,6 +134,75 @@ final class PlanStore: ObservableObject {
             errorMessage = nil
         } catch {
             errorMessage = saveFailure(error)
+        }
+    }
+
+    @discardableResult
+    func addTimedActivity(name: String) -> String? {
+        updateActivityTimers { try $0.addActivity(name: name) }
+    }
+
+    @discardableResult
+    func renameTimedActivity(id: UUID, name: String) -> String? {
+        updateActivityTimers { try $0.renameActivity(id: id, name: name) }
+    }
+
+    @discardableResult
+    func deleteTimedActivity(id: UUID) -> String? {
+        updateActivityTimers { try $0.deleteActivity(id: id) }
+    }
+
+    @discardableResult
+    func startActivityTimer(activityID: UUID, mode: ActivityTimerMode, duration: TimeInterval?) -> String? {
+        let date = nowProvider()
+        return updateActivityTimers { try $0.start(activityID: activityID, mode: mode, duration: duration, at: date) }
+    }
+
+    @discardableResult
+    func toggleActivityTimerPause() -> String? {
+        let date = nowProvider()
+        return updateActivityTimers { $0.togglePause(at: date) }
+    }
+
+    @discardableResult
+    func finishActivityTimer() -> String? {
+        let date = nowProvider()
+        return updateActivityTimers { $0.finish(at: date) }
+    }
+
+    func dismissTimerNotice() { timerNotice = nil }
+
+    private func updateActivityTimers(_ change: (inout ActivityTimerDocument) throws -> Void) -> String? {
+        var candidate = activityTimers
+        do {
+            try change(&candidate)
+            try activityTimerStore.save(candidate)
+            activityTimers = candidate
+            activityTimerError = nil
+            timerNotice = nil
+            now = nowProvider()
+            return nil
+        } catch {
+            let message = "事项计时未保存：\(error.localizedDescription)"
+            activityTimerError = message
+            return message
+        }
+    }
+
+    private func refreshActivityTimer(at date: Date) {
+        var candidate = activityTimers
+        let completed = candidate.activeSession
+        guard candidate.completeCountdown(at: date) else { return }
+        do {
+            try activityTimerStore.save(candidate)
+            activityTimers = candidate
+            activityTimerError = nil
+            let name = candidate.activities.first { $0.id == completed?.activityID }?.name ?? "事项"
+            timerNotice = "\(name)的倒计时已完成，时长已计入累计记录。"
+            // Refreshes after wake/relaunch also complete exactly once, without requiring notification access.
+            if timer != nil { NSSound.beep() }
+        } catch {
+            activityTimerError = "倒计时已到时，记录保存失败，将自动重试：\(error.localizedDescription)"
         }
     }
 
