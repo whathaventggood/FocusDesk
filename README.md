@@ -29,6 +29,10 @@
 
 截图来自实际应用渲染；Windows 和英文截图见 [截图目录](docs/screenshots/)。
 
+| Windows 中文版 | Windows English |
+|---|---|
+| ![Windows 事项计时](docs/screenshots/windows-timers-zh-Hans.png) | ![Windows English settings](docs/screenshots/windows-settings-en.png) |
+
 ## 功能与一致性
 
 | 功能 | macOS | Windows |

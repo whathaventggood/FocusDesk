@@ -20,9 +20,12 @@ jobs:
       - name: Package Chinese and English editions
         run: |
           mkdir -p build/desktop-release
+          bash scripts/build-app.sh Release
           for language in zh-Hans en; do
-            FOCUSDESK_DEFAULT_LANGUAGE="$language" bash scripts/build-app.sh Release
-            cp build/Release/FocusDesk.zip "build/desktop-release/FocusDesk-3.0.0-macos-arm64-$language.zip"
+            /usr/libexec/PlistBuddy -c "Set :FocusDeskDefaultLanguage $language" build/Release/FocusDesk.app/Contents/Info.plist
+            codesign --force --sign - build/Release/FocusDesk.app
+            codesign --verify --deep --strict build/Release/FocusDesk.app
+            ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl build/Release/FocusDesk.app "build/desktop-release/FocusDesk-3.0.0-macos-arm64-$language.zip"
           done
       - uses: actions/upload-artifact@v4
         with:

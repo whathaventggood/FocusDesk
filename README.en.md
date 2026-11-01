@@ -29,6 +29,10 @@ Community builds are ad-hoc signed and not Apple notarized on Mac, and do not ha
 
 Images are rendered from the actual applications. Browse [all screenshots](docs/screenshots/) for Windows and other themes.
 
+| Windows 中文版 | Windows English |
+|---|---|
+| ![Windows 事项计时](docs/screenshots/windows-timers-zh-Hans.png) | ![Windows English settings](docs/screenshots/windows-settings-en.png) |
+
 ## Features and platform parity
 
 | Feature | macOS | Windows |
