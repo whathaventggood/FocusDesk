@@ -18,8 +18,15 @@ struct SettingsView: View {
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                Picker("Language / 语言", selection: $store.language) {
-                    ForEach(AppLanguage.allCases, id: \.self) { Text($0.title).tag($0) }
+                HStack {
+                    Text(store.language == .english ? "Language" : "Language / 语言")
+                    Menu {
+                        ForEach(AppLanguage.allCases, id: \.self) { language in
+                            Button(language.title) { store.language = language }
+                        }
+                    } label: { Text(store.language.title).foregroundStyle(store.theme.accent) }
+                    .menuStyle(.borderlessButton).fixedSize().padding(8)
+                    .background(store.theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 }
                 GroupBox(L("外观与到时特效")) {
                     VStack(alignment: .leading, spacing: 14) {

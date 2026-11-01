@@ -561,6 +561,17 @@ private enum NativeSmoke {
         try writePreview(detail, to: output.appendingPathComponent("floating-en.png"))
         try require(L("已到时") == "Time's up", "English UI translation")
         try require(L("%@，%@", "Name %@", "done") == "Name %@, done", "Interpolation must preserve percent signs in user names")
+        let englishDefaults = SmokeDefaults()
+        englishDefaults.set("en", forKey: "appearance.language")
+        let englishStore = PlanStore(storageDirectory: output.appendingPathComponent("english-preview-\(UUID().uuidString)"), defaults: englishDefaults, allowsLoginItemChanges: false, startClock: false)
+        defer { englishStore.stop() }
+        englishStore.theme = .terminal
+        try require(!englishStore.motivationalQuote.text.contains("。"), "English quote is translated on first launch")
+        let englishWindow = NSWindow(contentRect: NSRect(origin: .zero, size: FloatingView.panelSize), styleMask: [.borderless], backing: .buffered, defer: false)
+        englishWindow.contentView = NSHostingView(rootView: FloatingView(store: englishStore))
+        englishWindow.orderFrontRegardless()
+        try writePreview(englishWindow, to: output.appendingPathComponent("floating-en.png"))
+        englishWindow.orderOut(nil)
         controller.store.language = .chinese
         controller.store.setLaunchAtLogin(true)
         try require(controller.store.errorMessage?.contains("测试模式") == true, "Smoke mode must block system login-item changes")

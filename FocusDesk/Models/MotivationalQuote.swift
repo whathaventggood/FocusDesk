@@ -9,7 +9,7 @@ struct MotivationalQuote: Identifiable, Equatable {
 
     // Keep IDs stable so cached selections survive app updates.
     // Explanations are editorial paraphrases; translated excerpts are labeled in the source.
-    static var all: [MotivationalQuote] = [
+    static var all: [MotivationalQuote] { [
         .init(id: "small-step", text: L("天行健，君子以自强不息。"), explanation: L("自然运行刚健不息，君子也应不断进取。把自我提升落实到今天的一次行动中。"), source: L("《周易·乾卦·象传》")),
         .init(id: "one-thing", text: L("路漫漫其修远兮，吾将上下而求索。"), explanation: L("追寻理想的道路漫长而艰难，仍要不断探索。眼前暂时没有答案，也可以继续求索。"), source: L("屈原《离骚》")),
         .init(id: "daily-growth", text: L("一个知道自己为何而活的人，几乎可以忍受任何一种生活。"), explanation: L("清楚自己为何而努力，往往能更有力量地面对困难。先找到行动的意义，再走好眼前这一步。"), source: L("尼采《偶像的黄昏》“格言与箭”第 12 则（中文意译）")),
@@ -30,7 +30,7 @@ struct MotivationalQuote: Identifiable, Equatable {
         .init(id: "careful-work", text: L("立志欲坚不欲锐，成功在久不在速。"), explanation: L("立志贵在坚定持久，成事依靠长期积累。找到能持续下去的节奏，不必急于一时。"), source: L("张孝祥《论治体札子》")),
         .init(id: "keep-curious", text: L("九万里风鹏正举。风休住，蓬舟吹取三山去！"), explanation: L("词人借大鹏展翅、乘风远行的想象，表达对自由境界和理想的追求。给自己的志向留一点辽阔。"), source: L("李清照《渔家傲·天接云涛连晓雾》")),
         .init(id: "trust-steps", text: L("知是行之始，行是知之成。"), explanation: L("认识引导行动，行动又使认识得到完成。把学到的一点道理，放进实际生活中试一试。"), source: L("王守仁（王阳明）《传习录》卷上，徐爱录"))
-    ]
+    ] }
 }
 
 /// A persisted hourly random rotation. The caller supplies the clock and decides when to refresh.

@@ -25,4 +25,4 @@ Extract the complete Windows folder and run `FocusDesk.exe`; .NET is included. O
 
 Mac packages use ad-hoc signatures and are not Apple notarized. Windows packages are community builds without commercial code-signing certificates. SHA-256 checksums are attached.
 
-Native platform behavior differs: Mac has inline drafts and history date filters; Windows uses edit dialogs and lists all historical days. Effects are rendered by each platform's native engine. Windows automated rendering does not cover every real hardware/DPI configuration. See the bilingual README for the full parity table and data locations.
+Native platform behavior differs: Mac has inline drafts; Windows uses edit dialogs. Both support history date filters. Effects are rendered by each platform's native engine. Windows automated rendering does not cover every real hardware/DPI configuration. See the bilingual README for the full parity table and data locations.

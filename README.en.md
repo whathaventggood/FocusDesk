@@ -43,7 +43,7 @@ Images are rendered from the actual applications. Browse [all screenshots](docs/
 | English and Simplified Chinese UI, examples, and quotes | Yes | Yes |
 | System entry point | Menu bar, ⌘1/2/3 | System tray |
 | Task drafts and detailed inline replacement preview | Yes | Dialog editing and replacement confirmation |
-| History filters | 7 / 30 days and all time | All recorded days |
+| History filters | 7 / 30 days and all time | 7 / 30 days and all time |
 
 Both apps use shared translations, initial plans, and quote resources from `shared/`. Timer rules are consistent: paused time is excluded, countdowns stop accumulating at their target, waiting after completion is excluded, and running timers recover elapsed time after sleep or exit. “+5 minutes” starts a new five-minute stretch at click time for the same activity.
 
