@@ -65,7 +65,9 @@
 
 ## 3.1 屏幕到时特效
 
-![85% 覆盖范围的真实特效渲染](docs/screenshots/screen-effect-85.png)
+| macOS · 85% | Windows · 85% |
+|---|---|
+| ![macOS effect frame](docs/screenshots/screen-effect-85.png) | ![Windows effect frame](docs/screenshots/windows-effect-85.png) |
 
 - **四种快捷预设：**轻柔 15%、标准 50%、夸张 85%、全屏沉浸 100%。旧版强度设置会迁移到对应预设。
 - **范围与浓度独立：**覆盖范围 10%–100%，按扩散圆与屏幕相交的实际面积计算；方块在角落也能达到对应范围。范围表示最终可达区域，不表示整块区域不透明。

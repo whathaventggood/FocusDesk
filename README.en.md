@@ -65,7 +65,9 @@ Language changes translate the interface, not personal task or activity names. I
 
 ## Screen effects in 3.1
 
-![Actual effect renderer at 85% coverage](docs/screenshots/screen-effect-85.png)
+| macOS · 85% | Windows · 85% |
+|---|---|
+| ![macOS effect frame](docs/screenshots/screen-effect-85.png) | ![Windows effect frame](docs/screenshots/windows-effect-85.png) |
 
 Coverage measures the screen area reached by the expanding circle at its largest extent, including when the square sits in a corner. It does not mean that percentage of the screen is opaque. The animation has a brief origin glow, broad expanding bands with theme-specific particles, and an optional edge-light finish. Edge glow is part of the total duration and capped at 40% of it. Turning effects off immediately stops an active animation. The default target is the square’s monitor; All monitors adds a separate overlay to each display, starting from the nearest point to the square on other displays. No screen recording permission is needed.
 
