@@ -80,9 +80,10 @@ struct SettingsView: View {
                             .background(store.theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                         }
                         Text(L("快捷预设")).font(.caption).foregroundStyle(.secondary)
-                        HStack {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading) {
                             ForEach(EffectIntensity.allCases) { preset in
                                 Button(preset.title) { store.effectIntensity = preset }
+                                    .fixedSize()
                             }
                         }
                         effectSlider("覆盖范围", value: $store.effectConfiguration.coverage, range: 0.1...1, step: 0.01, percent: true)
