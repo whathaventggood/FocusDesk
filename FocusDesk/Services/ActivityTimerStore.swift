@@ -19,11 +19,11 @@ final class ActivityTimerStore {
             let protection: String
             do {
                 try FileManager.default.copyItem(at: storageURL, to: backup)
-                protection = "原文件已备份为 \(backup.lastPathComponent)。"
+                protection = L("原文件已备份为 %@。", "\(backup.lastPathComponent)")
             } catch {
-                protection = "原文件无法备份，仍保留在原位置。"
+                protection = L("原文件无法备份，仍保留在原位置。")
             }
-            blockedSaveReason = "事项计时数据无法读取，已停止保存以保护记录。\n\(protection)\n请修复或从备份恢复 \(storageURL.path) 后重启应用。\n原因：\(error.localizedDescription)"
+            blockedSaveReason = L("事项计时数据无法读取，已停止保存以保护记录。\n%@\n请修复或从备份恢复 %@ 后重启应用。\n原因：%@", "\(protection)", "\(storageURL.path)", "\(error.localizedDescription)")
             return ActivityTimerDocument()
         }
     }

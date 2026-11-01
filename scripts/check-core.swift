@@ -432,6 +432,39 @@ private struct ActivityTimerChecks {
         try document.validate()
     }
 
+    func testQuietReminderMigrationExtensionAndValidation() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var document = ActivityTimerDocument()
+        try document.addActivity(name: "阅读")
+        let id = document.activities[0].id
+        try document.start(activityID: id, mode: .countdown, duration: 604_800, at: start)
+        document.completeCountdown(at: start.addingTimeInterval(604_800))
+        var restored = try JSONDecoder().decode(ActivityTimerDocument.self, from: JSONEncoder().encode(document))
+        try restored.validate()
+        CoreCheck.equal(restored.displayedSession?.id, document.sessions[0].id)
+        CoreCheck.equal(restored.displayedSession?.progress(at: start.addingTimeInterval(800_000)), 1)
+        CoreCheck.equal(restored.total(for: [id], at: start.addingTimeInterval(800_000)), 604_800)
+        try restored.extendCountdown(at: start.addingTimeInterval(800_000))
+        CoreCheck.nilValue(restored.pendingCountdownSessionID)
+        CoreCheck.equal(restored.displayedSession?.remaining(at: start.addingTimeInterval(800_000)), 300)
+        CoreCheck.equal(restored.total(for: [id], at: start.addingTimeInterval(800_020)), 604_820)
+        restored.completeCountdown(at: start.addingTimeInterval(800_300))
+        restored.finish(at: start.addingTimeInterval(900_000))
+        CoreCheck.nilValue(restored.displayedSession)
+        CoreCheck.equal(restored.total(for: [id], at: start.addingTimeInterval(900_000)), 605_100)
+        try restored.validate()
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as! [String: Any]
+        json.removeValue(forKey: "pendingCountdownSessionID")
+        let legacy = try JSONDecoder().decode(ActivityTimerDocument.self, from: JSONSerialization.data(withJSONObject: json))
+        try legacy.validate()
+        CoreCheck.nilValue(legacy.displayedSession)
+        CoreCheck.equal(legacy.sessions, document.sessions)
+        document.pendingCountdownSessionID = UUID()
+        var rejected = false
+        do { try document.validate() } catch { rejected = true }
+        CoreCheck.equal(rejected, true)
+    }
+
     func testPersistenceAndCorruptionProtection() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -504,7 +537,8 @@ private struct CoreCheckRunner {
         try activityTimerChecks.testAccumulationAndRangeClipping()
         try activityTimerChecks.testCountdownPauseBoundaryAndWake()
         try activityTimerChecks.testPersistenceAndCorruptionProtection()
-        print("Foundation checks: 31 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
+        try activityTimerChecks.testQuietReminderMigrationExtensionAndValidation()
+        print("Foundation checks: 32 cases, \(CoreCheck.checks) checks, \(CoreCheck.failures) failures")
         exit(CoreCheck.failures == 0 ? 0 : 1)
     }
 }

@@ -7,3 +7,6 @@ DerivedData/
 xcuserdata/
 *.xcarchive
 *.dSYM/
+
+windows/**/bin/
+windows/**/obj/

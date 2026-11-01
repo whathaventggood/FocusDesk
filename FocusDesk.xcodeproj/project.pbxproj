@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B10000000000000000000001 = {isa = PBXBuildFile; fileRef = B20000000000000000000001; };
 		A10000000000000000000001 /* FocusDeskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* FocusDeskApp.swift */; };
 		A10000000000000000000002 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppController.swift */; };
 		A10000000000000000000003 /* PlanTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* PlanTask.swift */; };
@@ -43,6 +44,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B20000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* FocusDeskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusDeskApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* PlanTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTask.swift; sourceTree = "<group>"; };
@@ -107,7 +109,8 @@
 		};
 		A50000000000000000000004 /* Models */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000024 /* ActivityTimer.swift */, A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */, A20000000000000000000013 /* PlanEditing.swift */, A20000000000000000000014 /* DailyProgress.swift */, A20000000000000000000022 /* MotivationalQuote.swift */,);
+			children = (A20000000000000000000024 /* ActivityTimer.swift */, B20000000000000000000001,
+				A20000000000000000000003 /* PlanTask.swift */, A20000000000000000000004 /* DefaultPlan.swift */, A20000000000000000000013 /* PlanEditing.swift */, A20000000000000000000014 /* DailyProgress.swift */, A20000000000000000000022 /* MotivationalQuote.swift */,);
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -208,6 +211,7 @@
 				A10000000000000000000024 /* ActivityTimer.swift in Sources */,
 				A10000000000000000000001 /* FocusDeskApp.swift in Sources */,
 				A10000000000000000000002 /* AppController.swift in Sources */,
+				B10000000000000000000001,
 				A10000000000000000000003 /* PlanTask.swift in Sources */,
 				A10000000000000000000004 /* DefaultPlan.swift in Sources */,
 				A10000000000000000000005 /* ScheduleEngine.swift in Sources */,
@@ -287,13 +291,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
@@ -306,13 +310,13 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FocusDesk/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.focusdesk.FocusDesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;

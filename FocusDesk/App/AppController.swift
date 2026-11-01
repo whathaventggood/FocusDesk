@@ -63,6 +63,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }()
     private var panel: NSPanel?
     private var compactPanel: NSPanel?
+    private var effectPanel: NSPanel?
+    private var effectGeneration = UUID()
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var historyWindow: NSWindow?
@@ -94,6 +96,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         createMainMenu()
         createStatusItem()
         createPanels()
+        store.onPreviewEffect = { [weak self] in self?.playCountdownEffect(preview: true) }
+        store.$countdownCompletionEventID.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] id in
+            guard id != nil else { return }
+            self?.playCountdownEffect()
+        }.store(in: &subscriptions)
+
+        store.$language.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.planWindow?.title = L("今日计划 · FocusDesk")
+            self?.settingsWindow?.title = L("设置 · FocusDesk")
+            self?.timersWindow?.title = L("事项计时 · FocusDesk")
+            self?.historyWindow?.title = L("专注记录 · FocusDesk")
+            self?.createMainMenu()
+            self?.statusItem?.menu = nil
+            self?.createStatusItem()
+        }.store(in: &subscriptions)
 
         store.$alwaysOnTop.removeDuplicates().sink { [weak self] enabled in
             self?.panel?.level = enabled ? .floating : .normal
@@ -107,6 +124,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             self, selector: #selector(screenConfigurationChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+    }
+
+    func playCountdownEffect(preview: Bool = false) {
+        guard store.effectsEnabled, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let compact = compactPanel, compact.isVisible else { return }
+        effectPanel?.orderOut(nil)
+        effectPanel?.contentView = nil
+        effectPanel?.close()
+        let window = desktopPanel(size: NSSize(width: 360, height: 360), title: L("FocusDesk 到时特效"))
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
+        window.animationBehavior = .none
+        window.level = compact.level
+        window.contentView = NSHostingView(rootView: CountdownEffectView(
+            theme: store.theme, effect: store.countdownEffect,
+            intensity: store.effectIntensity, startedAt: Date()))
+        window.setFrameOrigin(NSPoint(x: compact.frame.midX - 180, y: compact.frame.midY - 180))
+        window.orderFrontRegardless()
+        effectPanel = window
+        let generation = UUID()
+        effectGeneration = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + store.effectIntensity.duration + 0.1) { [weak self] in
+            guard let self, self.effectGeneration == generation else { return }
+            self.effectPanel?.orderOut(nil)
+            self.effectPanel?.contentView = nil
+            self.effectPanel?.close()
+            self.effectPanel = nil
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -146,7 +191,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     private func createPanels() {
-        let details = desktopPanel(size: panelSize, title: "FocusDesk 悬浮窗")
+        let details = desktopPanel(size: panelSize, title: L("FocusDesk 悬浮窗"))
         details.isMovable = false
         let detailHost = HoverHostingView(rootView: FloatingView(store: store))
         detailHost.sizingOptions = []
@@ -155,7 +200,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         panel = details
 
         let side = CGFloat(store.compactSize)
-        let compact = desktopPanel(size: NSSize(width: side, height: side), title: "FocusDesk 小方块")
+        let compact = desktopPanel(size: NSSize(width: side, height: side), title: L("FocusDesk 小方块"))
         compact.isMovableByWindowBackground = true
         compact.delegate = self
         let compactHost = HoverHostingView(rootView: CompactView(
@@ -256,7 +301,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
             )
-            window.title = "今日计划 · FocusDesk"
+            window.title = L("今日计划 · FocusDesk")
             window.minSize = NSSize(width: 760, height: 520)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -279,17 +324,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         collapseDetails()
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
+                contentRect: NSRect(x: 0, y: 0, width: 520, height: 720),
                 styleMask: [.titled, .closable], backing: .buffered, defer: false
             )
-            window.title = "设置 · FocusDesk"
+            window.title = L("设置 · FocusDesk")
             window.isReleasedWhenClosed = false
             window.isRestorable = false
             window.titlebarAppearsTransparent = true
             let hosting = NSHostingView(rootView: SettingsView(store: store))
             window.contentView = hosting
             let ideal = hosting.fittingSize
-            window.setContentSize(NSSize(width: 440, height: max(520, ideal.height)))
+            window.setContentSize(NSSize(width: 520, height: max(720, ideal.height)))
             window.center()
             settingsWindow = window
         }
@@ -305,7 +350,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 contentRect: NSRect(x: 0, y: 0, width: 800, height: 700),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
             )
-            window.title = "专注记录 · FocusDesk"
+            window.title = L("专注记录 · FocusDesk")
             window.minSize = NSSize(width: 680, height: 540)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -326,7 +371,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 contentRect: NSRect(x: 0, y: 0, width: 800, height: 760),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
             )
-            window.title = "事项计时 · FocusDesk"
+            window.title = L("事项计时 · FocusDesk")
             window.minSize = NSSize(width: 700, height: 560)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -347,7 +392,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
                 styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false
             )
-            window.title = "解释与出处 · FocusDesk"
+            window.title = L("解释与出处 · FocusDesk")
             window.minSize = NSSize(width: 360, height: 300)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -456,28 +501,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     private func createStatusItem() {
+        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let image = NSImage(systemSymbolName: "timer", accessibilityDescription: "FocusDesk")
         image?.isTemplate = true
         item.button?.image = image
-        item.button?.toolTip = "FocusDesk · 今日专注计划"
+        item.button?.toolTip = L("FocusDesk · 今日专注计划")
         let menu = NSMenu()
         menu.delegate = self
         menu.addItem(NSMenuItem(title: "FocusDesk", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
-        visibilityMenuItem = addMenuItem("隐藏小方块", action: #selector(toggleFloating), to: menu)
-        addMenuItem("今日计划…", action: #selector(showPlan), to: menu)
-        addMenuItem("专注记录…", action: #selector(showHistory), to: menu)
-        addMenuItem("事项计时…", action: #selector(showTimers), to: menu)
-        addMenuItem("设置…", action: #selector(showSettings), to: menu)
+        visibilityMenuItem = addMenuItem(L("隐藏小方块"), action: #selector(toggleFloating), to: menu)
+        addMenuItem(L("今日计划…"), action: #selector(showPlan), to: menu)
+        addMenuItem(L("专注记录…"), action: #selector(showHistory), to: menu)
+        addMenuItem(L("事项计时…"), action: #selector(showTimers), to: menu)
+        addMenuItem(L("设置…"), action: #selector(showSettings), to: menu)
         menu.addItem(.separator())
-        addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: menu)
+        addMenuItem(L("退出 FocusDesk"), action: #selector(quit), key: "q", to: menu)
         item.menu = menu
         statusItem = item
     }
 
     private func updateVisibilityMenuItem() {
-        visibilityMenuItem?.title = compactPanel?.isVisible == true ? "隐藏小方块" : "显示小方块"
+        visibilityMenuItem?.title = compactPanel?.isVisible == true ? L("隐藏小方块") : L("显示小方块")
     }
 
     @discardableResult
@@ -492,25 +538,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "FocusDesk")
-        addMenuItem("今日计划…", action: #selector(showPlan), key: "1", to: appMenu)
-        addMenuItem("专注记录…", action: #selector(showHistory), key: "2", to: appMenu)
-        addMenuItem("事项计时…", action: #selector(showTimers), key: "3", to: appMenu)
-        addMenuItem("设置…", action: #selector(showSettings), key: ",", to: appMenu)
+        addMenuItem(L("今日计划…"), action: #selector(showPlan), key: "1", to: appMenu)
+        addMenuItem(L("专注记录…"), action: #selector(showHistory), key: "2", to: appMenu)
+        addMenuItem(L("事项计时…"), action: #selector(showTimers), key: "3", to: appMenu)
+        addMenuItem(L("设置…"), action: #selector(showSettings), key: ",", to: appMenu)
         appMenu.addItem(.separator())
-        addMenuItem("退出 FocusDesk", action: #selector(quit), key: "q", to: appMenu)
+        addMenuItem(L("退出 FocusDesk"), action: #selector(quit), key: "q", to: appMenu)
         appItem.submenu = appMenu
         main.addItem(appItem)
 
         // Standard responder-chain actions keep native text editing shortcuts available.
         let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: "编辑")
+        let editMenu = NSMenu(title: L("编辑"))
         for (title, action, key) in [
-            ("撤销", Selector(("undo:")), "z"),
-            ("重做", Selector(("redo:")), "Z"),
-            ("剪切", #selector(NSText.cut(_:)), "x"),
-            ("复制", #selector(NSText.copy(_:)), "c"),
-            ("粘贴", #selector(NSText.paste(_:)), "v"),
-            ("全选", #selector(NSText.selectAll(_:)), "a")
+            (L("撤销"), Selector(("undo:")), "z"),
+            (L("重做"), Selector(("redo:")), "Z"),
+            (L("剪切"), #selector(NSText.cut(_:)), "x"),
+            (L("复制"), #selector(NSText.copy(_:)), "c"),
+            (L("粘贴"), #selector(NSText.paste(_:)), "v"),
+            (L("全选"), #selector(NSText.selectAll(_:)), "a")
         ] {
             editMenu.addItem(NSMenuItem(title: title, action: action, keyEquivalent: key))
         }

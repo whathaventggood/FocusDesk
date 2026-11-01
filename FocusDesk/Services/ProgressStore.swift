@@ -46,11 +46,11 @@ final class ProgressStore {
             let protection: String
             do {
                 try FileManager.default.copyItem(at: storageURL, to: backup)
-                protection = "原文件已备份为 \(backup.lastPathComponent)。"
+                protection = L("原文件已备份为 %@。", "\(backup.lastPathComponent)")
             } catch {
-                protection = "原文件无法备份，请检查文件夹权限。"
+                protection = L("原文件无法备份，请检查文件夹权限。")
             }
-            let reason = "本地计划或历史记录无法读取，已暂时展示默认计划。\n\(protection)\n为保护历史记录，已停止保存。请在“设置”中确认备份并恢复默认计划；也可以手动修复 \(storageURL.path) 后重启应用。\n原因：\(originalError)"
+            let reason = L("本地计划或历史记录无法读取，已暂时展示默认计划。\n%@\n为保护历史记录，已停止保存。请在“设置”中确认备份并恢复默认计划；也可以手动修复 %@ 后重启应用。\n原因：%@", "\(protection)", "\(storageURL.path)", "\(originalError)")
             blockedSaveReason = reason
             return LoadResult(document: fallback, notice: reason)
         }
@@ -74,7 +74,7 @@ final class ProgressStore {
             try FileManager.default.copyItem(at: storageURL, to: backup)
         } catch {
             throw CocoaError(.fileWriteNoPermission, userInfo: [NSLocalizedDescriptionKey:
-                "无法备份原文件，已取消恢复，原数据未被覆盖。\n\(error.localizedDescription)"])
+                L("无法备份原文件，已取消恢复，原数据未被覆盖。\n%@", "\(error.localizedDescription)")])
         }
         try write(document)
         blockedSaveReason = nil
@@ -91,17 +91,17 @@ final class ProgressStore {
     }
 
     private static func validate(_ document: ProgressDocument) throws {
-        guard document.version == 1 else { throw corrupt("无法识别数据文件版本，请使用兼容的 FocusDesk 版本打开。") }
+        guard document.version == 1 else { throw corrupt(L("无法识别数据文件版本，请使用兼容的 FocusDesk 版本打开。")) }
         if let reason = PlanValidator.validate(document.tasks) { throw corrupt(reason) }
         var days = Set<String>()
         for day in document.history {
             guard validDayKey(day.day), days.insert(day.day).inserted,
                   TimeZone(identifier: day.timeZoneIdentifier) != nil else {
-                throw corrupt("历史记录日期、时区无效或日期重复。")
+                throw corrupt(L("历史记录日期、时区无效或日期重复。"))
             }
             if let reason = PlanValidator.validate(day.tasks.map(\.task)) { throw corrupt(reason) }
             guard day.tasks.allSatisfy({ $0.completedAt?.timeIntervalSinceReferenceDate.isFinite ?? true }) else {
-                throw corrupt("历史记录包含无效的完成时间。")
+                throw corrupt(L("历史记录包含无效的完成时间。"))
             }
         }
     }

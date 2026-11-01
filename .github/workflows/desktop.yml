@@ -1,0 +1,72 @@
+name: Desktop parity
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shared translations
+        run: python3 scripts/localization/generate.py && git diff --exit-code FocusDesk/Models/AppLanguage.swift shared/
+      - name: XCTest
+        run: bash scripts/test-xcode.sh
+      - name: Package Chinese and English editions
+        run: |
+          mkdir -p build/desktop-release
+          for language in zh-Hans en; do
+            FOCUSDESK_DEFAULT_LANGUAGE="$language" bash scripts/build-app.sh Release
+            cp build/Release/FocusDesk.zip "build/desktop-release/FocusDesk-3.0.0-macos-arm64-$language.zip"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: build/desktop-release/*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-test-results
+          path: build/TestResults/
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build standalone Windows application
+        run: dotnet publish windows/FocusDesk.Windows -c Release -r win-x64 --self-contained true -o build/windows-publish
+      - name: Core behavioral checks
+        shell: pwsh
+        run: |
+          $process = Start-Process build/windows-publish/FocusDesk.exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Windows core checks failed: $($process.ExitCode)" }
+      - name: Render actual Windows UI screenshots
+        shell: pwsh
+        run: |
+          $process = Start-Process build/windows-publish/FocusDesk.exe -ArgumentList '--smoke' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { Get-Content windows-smoke-error.txt -ErrorAction SilentlyContinue; throw "Windows UI checks failed: $($process.ExitCode)" }
+      - name: Package language editions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/desktop-release | Out-Null
+          foreach ($language in @('zh-Hans','en')) {
+            Set-Content build/windows-publish/default-language.txt $language -Encoding utf8NoBOM
+            Compress-Archive -Path build/windows-publish/* -DestinationPath "build/desktop-release/FocusDesk-3.0.0-windows-x64-$language.zip"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: build/desktop-release/*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshots
+          path: build/windows-screenshots/*.png

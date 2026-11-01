@@ -125,6 +125,90 @@ final class ActivityTimerTests: XCTestCase {
         try document.validate()
     }
 
+    func testCountdownReminderPersistsUntilHandledAndDoesNotAccumulateWaitingTime() throws {
+        var document = try document()
+        let id = document.activities[0].id
+        try document.start(activityID: id, mode: .countdown, duration: 60, at: start)
+        let sessionID = document.activeSession?.id
+        XCTAssertTrue(document.completeCountdown(at: start.addingTimeInterval(100)))
+        var reloaded = try JSONDecoder().decode(ActivityTimerDocument.self, from: JSONEncoder().encode(document))
+        try reloaded.validate()
+        XCTAssertEqual(reloaded.displayedSession?.id, sessionID)
+        XCTAssertTrue(reloaded.displayedSession?.isAwaitingCompletion == true)
+        XCTAssertEqual(reloaded.total(for: [id], at: start.addingTimeInterval(10_000)), 60)
+        try reloaded.addActivity(name: "运动")
+        try reloaded.renameActivity(id: id, name: "读书")
+        XCTAssertEqual(reloaded.pendingCountdownSessionID, sessionID)
+        reloaded.finish(at: start.addingTimeInterval(10_000))
+        XCTAssertNil(reloaded.displayedSession)
+        XCTAssertNil(reloaded.pendingCountdownSessionID)
+        XCTAssertEqual(reloaded.sessions.count, 1)
+        XCTAssertEqual(reloaded.sessions[0].savedDuration, 60)
+        try reloaded.validate()
+    }
+
+    func testExtensionStartsFiveMinutesFromClickAndCanRepeat() throws {
+        var document = try document()
+        let id = document.activities[0].id
+        XCTAssertThrowsError(try document.extendCountdown(at: start))
+        try document.start(activityID: id, mode: .countdown, duration: 604_800, at: start)
+        XCTAssertThrowsError(try document.extendCountdown(at: start.addingTimeInterval(1)))
+        let click = start.addingTimeInterval(700_000)
+        // Handles a click at the deadline before the next clock refresh, including 7-day timers.
+        try document.extendCountdown(at: click)
+        XCTAssertNil(document.pendingCountdownSessionID)
+        XCTAssertEqual(document.activeSession?.activityID, id)
+        XCTAssertEqual(document.activeSession?.remaining(at: click), 300)
+        XCTAssertEqual(document.total(for: [id], at: click.addingTimeInterval(20)), 604_820)
+        XCTAssertTrue(document.completeCountdown(at: click.addingTimeInterval(300)))
+        try document.extendCountdown(at: click.addingTimeInterval(1000))
+        XCTAssertEqual(document.activeSession?.remaining(at: click.addingTimeInterval(1000)), 300)
+        XCTAssertEqual(document.total(for: [id], at: click.addingTimeInterval(1000)), 605_100)
+        try document.validate()
+    }
+
+    func testNewTimerAndDeletionClearOnlyTheRelevantReminder() throws {
+        var document = try document()
+        let id = document.activities[0].id
+        try document.addActivity(name: "运动")
+        let otherID = document.activities[1].id
+        try document.start(activityID: id, mode: .countdown, duration: 1, at: start)
+        XCTAssertTrue(document.completeCountdown(at: start.addingTimeInterval(1)))
+        let pendingID = document.pendingCountdownSessionID
+        try document.deleteActivity(id: otherID)
+        XCTAssertEqual(document.pendingCountdownSessionID, pendingID)
+        try document.start(activityID: id, mode: .stopwatch, duration: nil, at: start.addingTimeInterval(10))
+        XCTAssertNil(document.pendingCountdownSessionID)
+        XCTAssertEqual(document.displayedSession?.mode, .stopwatch)
+        document.finish(at: start.addingTimeInterval(20))
+        XCTAssertNil(document.displayedSession)
+        try document.start(activityID: id, mode: .countdown, duration: 1, at: start.addingTimeInterval(30))
+        XCTAssertTrue(document.completeCountdown(at: start.addingTimeInterval(31)))
+        try document.deleteActivity(id: id)
+        XCTAssertNil(document.displayedSession)
+        XCTAssertNil(document.pendingCountdownSessionID)
+        try document.validate()
+    }
+
+    func testOldTimerFilesLoadWithoutInventingRemindersAndInvalidReferencesAreRejected() throws {
+        var document = try document()
+        let id = document.activities[0].id
+        try document.start(activityID: id, mode: .countdown, duration: 60, at: start)
+        document.finish(at: start.addingTimeInterval(60))
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as? [String: Any])
+        json.removeValue(forKey: "pendingCountdownSessionID")
+        let legacy = try JSONDecoder().decode(ActivityTimerDocument.self, from: JSONSerialization.data(withJSONObject: json))
+        try legacy.validate()
+        XCTAssertNil(legacy.displayedSession)
+        XCTAssertEqual(legacy.sessions, document.sessions)
+        document.pendingCountdownSessionID = UUID()
+        XCTAssertThrowsError(try document.validate())
+        document.pendingCountdownSessionID = document.sessions[0].id
+        try document.validate()
+        document.sessions[0].segments = []
+        XCTAssertThrowsError(try document.validate())
+    }
+
     func testExactCountdownBoundaryAndPauseCannotLeaveFinishedTimerActive() throws {
         var document = try document()
         try document.start(activityID: document.activities[0].id, mode: .countdown, duration: 1, at: start)

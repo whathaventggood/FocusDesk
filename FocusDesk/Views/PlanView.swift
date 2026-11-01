@@ -22,7 +22,7 @@ struct PlanView: View {
                         store.clearError()
                     } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("关闭提示")
+                    .accessibilityLabel(L("关闭提示"))
                 }
                 .padding(14)
                 .background(Color.orange.opacity(0.08))
@@ -36,10 +36,10 @@ struct PlanView: View {
                                 .id("new-task")
                         } else if retainedNewTask != nil {
                             HStack {
-                                Label("新增草稿已保留，可以继续编辑其他任务。", systemImage: "doc.text")
+                                Label(L("新增草稿已保留，可以继续编辑其他任务。"), systemImage: "doc.text")
                                 Spacer()
-                                Button("继续新增") { beginAdding() }
-                                Button("丢弃草稿") {
+                                Button(L("继续新增")) { beginAdding() }
+                                Button(L("丢弃草稿")) {
                                     if let id = retainedNewTask?.id { drafts[id] = nil }
                                     retainedNewTask = nil
                                 }
@@ -51,8 +51,8 @@ struct PlanView: View {
                             VStack(spacing: 12) {
                                 Image(systemName: "calendar.badge.plus")
                                     .font(.system(size: 32)).foregroundStyle(.secondary)
-                                Text("今天由你安排").font(.title3.weight(.semibold))
-                                Text("点击右上角“新增任务”，开始制定每日计划。")
+                                Text(L("今天由你安排")).font(.title3.weight(.semibold))
+                                Text(L("点击右上角“新增任务”，开始制定每日计划。"))
                                     .foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity)
@@ -92,9 +92,9 @@ struct PlanView: View {
             Divider()
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
-                Text("每日重复 · 完成状态按天记录 · 编辑保存后同步悬浮窗")
+                Text(L("每日重复 · 完成状态按天记录 · 编辑保存后同步悬浮窗"))
                 Spacer()
-                Text("\(store.tasks.count) 项任务")
+                Text(L("%@ 项任务", "\(store.tasks.count)"))
             }
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
@@ -102,26 +102,28 @@ struct PlanView: View {
             .padding(.vertical, 12)
         }
         .frame(minWidth: 680, idealWidth: 820, minHeight: 520, idealHeight: 760)
+        .modifier(ThemeSurface(store: store))
+        .id(store.language)
     }
 
     private var header: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 7) {
-                Text("今日计划").font(.system(size: 25, weight: .bold))
+                Text(L("今日计划")).font(.system(size: 25, weight: .bold))
                 Text(store.now.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).month().day().weekday(.wide)))
                     .font(.callout).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     ProgressView(value: store.todayProgress.completionRate)
                         .frame(width: 92)
-                    Text("已完成 \(store.todayProgress.completedCount)/\(store.todayProgress.totalCount) · \(Int(store.todayProgress.completionRate * 100))%")
+                    Text(L("已完成 %@/%@ · %@%", "\(store.todayProgress.completedCount)", "\(store.todayProgress.totalCount)", "\(Int(store.todayProgress.completionRate * 100))"))
                         .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
             Spacer()
-            Button { store.onShowHistory?() } label: { Label("历史记录", systemImage: "chart.bar") }
+            Button { store.onShowHistory?() } label: { Label(L("历史记录"), systemImage: "chart.bar") }
             Button { store.onShowSettings?() } label: { Image(systemName: "gearshape") }
-                .help("设置")
-            Button(action: beginAdding) { Label(retainedNewTask == nil ? "新增任务" : "继续新增", systemImage: "plus") }
+                .help(L("设置"))
+            Button(action: beginAdding) { Label(retainedNewTask == nil ? L("新增任务") : L("继续新增"), systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
         }
         .padding(22)
@@ -201,8 +203,8 @@ private struct TaskSummaryRow: View {
                     .foregroundStyle(isCompleted ? Color.green : Color.secondary)
             }
             .buttonStyle(.plain)
-            .help(isCompleted ? "撤销今日完成" : "标记今日已完成")
-            .accessibilityLabel("\(task.title)，\(isCompleted ? "今日已完成，点击撤销" : "标记今日完成")")
+            .help(isCompleted ? L("撤销今日完成") : L("标记今日已完成"))
+            .accessibilityLabel(L("%@，%@", "\(task.title)", "\(isCompleted ? L("今日已完成，点击撤销") : L("标记今日完成"))"))
             Button(action: onEdit) {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 7) {
@@ -212,7 +214,7 @@ private struct TaskSummaryRow: View {
                             .font(.system(size: 12, design: .rounded))
                             .foregroundStyle(.secondary)
                         if isCurrent {
-                            Text("进行中")
+                            Text(L("进行中"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
                         }
@@ -225,9 +227,9 @@ private struct TaskSummaryRow: View {
                         HStack(spacing: 8) {
                             Text(task.title).font(.system(size: 15, weight: .semibold))
                                 .strikethrough(isCompleted)
-                            if hasDraft { Text("有草稿").font(.caption2).foregroundStyle(.orange) }
+                            if hasDraft { Text(L("有草稿")).font(.caption2).foregroundStyle(.orange) }
                         }
-                        Text(task.details.isEmpty ? "暂无详细说明" : task.details)
+                        Text(task.details.isEmpty ? L("暂无详细说明") : task.details)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .lineSpacing(3)
@@ -238,12 +240,12 @@ private struct TaskSummaryRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("编辑\(task.title)")
+            .accessibilityLabel(L("编辑%@", "\(task.title)"))
             HStack(spacing: 12) {
                 Button(action: onEdit) { Image(systemName: "pencil") }
-                    .help("在此处编辑任务").accessibilityLabel("编辑\(task.title)")
+                    .help(L("在此处编辑任务")).accessibilityLabel(L("编辑%@", "\(task.title)"))
                 Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
-                    .help("删除任务").accessibilityLabel("删除\(task.title)")
+                    .help(L("删除任务")).accessibilityLabel(L("删除%@", "\(task.title)"))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
@@ -302,38 +304,38 @@ private struct TaskEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label(isNew ? "新增任务" : "编辑任务", systemImage: isNew ? "plus.circle" : "pencil.circle")
+                Label(isNew ? L("新增任务") : L("编辑任务"), systemImage: isNew ? "plus.circle" : "pencil.circle")
                     .font(.headline).foregroundStyle(Color.accentColor)
                 Spacer()
-                Text("在当前列表内编辑").font(.caption).foregroundStyle(.secondary)
+                Text(L("在当前列表内编辑")).font(.caption).foregroundStyle(.secondary)
             }
             if isNew && freeSlots.isEmpty {
-                Label("今日已排满。可取消后调整现有任务，或指定时间并预览替换。", systemImage: "calendar.badge.exclamationmark")
+                Label(L("今日已排满。可取消后调整现有任务，或指定时间并预览替换。"), systemImage: "calendar.badge.exclamationmark")
                     .font(.callout).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("开始时间").font(.caption).foregroundStyle(.secondary)
+                    Text(L("开始时间")).font(.caption).foregroundStyle(.secondary)
                     TextField("08:00", text: $draft.start)
                         .monospacedDigit().frame(width: 94)
-                        .accessibilityLabel("开始时间，24小时制")
+                        .accessibilityLabel(L("开始时间，24小时制"))
                 }
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("结束时间").font(.caption).foregroundStyle(.secondary)
+                    Text(L("结束时间")).font(.caption).foregroundStyle(.secondary)
                     TextField("09:00", text: $draft.end)
                         .monospacedDigit().frame(width: 94)
-                        .accessibilityLabel("结束时间，24小时制")
+                        .accessibilityLabel(L("结束时间，24小时制"))
                 }
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("任务名称").font(.caption).foregroundStyle(.secondary)
-                    TextField("要做些什么？", text: $draft.title)
-                        .accessibilityLabel("任务名称")
+                    Text(L("任务名称")).font(.caption).foregroundStyle(.secondary)
+                    TextField(L("要做些什么？"), text: $draft.title)
+                        .accessibilityLabel(L("任务名称"))
                 }
             }
             .textFieldStyle(.roundedBorder)
             VStack(alignment: .leading, spacing: 7) {
-                Text("详细说明").font(.caption).foregroundStyle(.secondary)
+                Text(L("详细说明")).font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $draft.details)
                     .font(.body)
                     .scrollContentBackground(.hidden)
@@ -342,9 +344,9 @@ private struct TaskEditor: View {
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.2)))
-                    .accessibilityLabel("详细说明")
+                    .accessibilityLabel(L("详细说明"))
             }
-            Text("使用 HH:mm（24 小时制）。结束时间 00:00 或 24:00 表示当天结束；结束时间需晚于开始时间。")
+            Text(L("使用 HH:mm（24 小时制）。结束时间 00:00 或 24:00 表示当天结束；结束时间需晚于开始时间。"))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             if !conflicts.isEmpty { conflictNotice }
             if !freeSlots.isEmpty && (isNew || !conflicts.isEmpty) { slotSuggestions }
@@ -355,15 +357,15 @@ private struct TaskEditor: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Text("切换任务或取消会保留草稿，不修改已保存计划。")
+                Text(L("切换任务或取消会保留草稿，不修改已保存计划。"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if !isNew && draft != TaskDraft(task: task) {
-                    Button("放弃修改", action: onDiscard)
+                    Button(L("放弃修改"), action: onDiscard)
                 }
-                Button("取消", action: onCancel)
+                Button(L("取消"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("完成并保存", action: save)
+                Button(L("完成并保存"), action: save)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut("s", modifiers: .command)
             }
@@ -382,15 +384,15 @@ private struct TaskEditor: View {
 
     private var conflictNotice: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Label("时间冲突：以下任务已占用这个时间段", systemImage: "exclamationmark.triangle")
+            Label(L("时间冲突：以下任务已占用这个时间段"), systemImage: "exclamationmark.triangle")
                 .font(.callout.weight(.semibold)).foregroundStyle(.orange)
             ForEach(conflicts) { conflict in
                 Text("\(range(of: conflict))  \(conflict.title)")
                     .font(.callout).fixedSize(horizontal: false, vertical: true)
             }
             if !showsReplacementPreview {
-                Button("替换这个时间段…") { prepareReplacement() }
-                    .help("先查看原任务如何保留或移除，确认后才保存")
+                Button(L("替换这个时间段…")) { prepareReplacement() }
+                    .help(L("先查看原任务如何保留或移除，确认后才保存"))
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -400,7 +402,7 @@ private struct TaskEditor: View {
 
     private var slotSuggestions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("可用空档（点击采用，最多填入原时长）：")
+            Text(L("可用空档（点击采用，最多填入原时长）："))
                 .font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 ForEach(Array(freeSlots.prefix(3))) { slot in
@@ -408,7 +410,7 @@ private struct TaskEditor: View {
                         .font(.caption).monospacedDigit()
                 }
                 if freeSlots.count > 3 {
-                    Menu("另 \(freeSlots.count - 3) 个") {
+                    Menu(L("另 %@ 个", "\(freeSlots.count - 3)")) {
                         ForEach(Array(freeSlots.dropFirst(3))) { slot in
                             Button(slot.displayRange) { adopt(slot) }
                         }
@@ -420,24 +422,24 @@ private struct TaskEditor: View {
 
     private func replacementPreview(for edited: PlanTask) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("调整预览 · 尚未保存", systemImage: "list.bullet.rectangle")
+            Label(L("调整预览 · 尚未保存"), systemImage: "list.bullet.rectangle")
                 .font(.headline)
-            Text("保存：\(range(of: edited))  \(edited.title)")
+            Text(L("保存：%@  %@", "\(range(of: edited))", "\(edited.title)"))
                 .font(.callout.weight(.semibold))
             ForEach(conflicts) { original in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(original.title)（原 \(range(of: original))）")
+                    Text(L("%@（原 %@）", "\(original.title)", "\(range(of: original))"))
                         .font(.callout.weight(.medium))
                     Text(replacementDescription(original, replacing: edited))
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
-            Text("原任务未重叠的内容会保留；完整覆盖的任务将移除。移除不能在应用内撤销。")
+            Text(L("原任务未重叠的内容会保留；完整覆盖的任务将移除。移除不能在应用内撤销。"))
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("返回调整时间") { showsReplacementPreview = false }
+                Button(L("返回调整时间")) { showsReplacementPreview = false }
                 Spacer()
-                Button("确认替换并保存", role: .destructive, action: confirmReplacement)
+                Button(L("确认替换并保存"), role: .destructive, action: confirmReplacement)
                     .buttonStyle(.borderedProminent).tint(.orange)
             }
         }
@@ -454,7 +456,7 @@ private struct TaskEditor: View {
         if original.endMinutes > edited.endMinutes {
             kept.append(PlanTimeSlot(startMinutes: edited.endMinutes, endMinutes: original.endMinutes).displayRange)
         }
-        return kept.isEmpty ? "完整覆盖，将移除此任务。" : "保留 \(kept.joined(separator: " 和 "))，名称与详细说明保留。"
+        return kept.isEmpty ? L("完整覆盖，将移除此任务。") : L("保留 %@，名称与详细说明保留。", "\(kept.joined(separator: L(" 和 ")))")
     }
 
     private func range(of task: PlanTask) -> String {
@@ -470,11 +472,11 @@ private struct TaskEditor: View {
 
     private func validatedTask() -> PlanTask? {
         guard let start = TimeInput.parse(draft.start), start < 1_440 else {
-            error = "开始时间格式有误，请使用 00:00～23:59。"
+            error = L("开始时间格式有误，请使用 00:00～23:59。")
             return nil
         }
         guard let end = TimeInput.endMinutes(from: draft.end, startMinutes: start) else {
-            error = "结束时间格式有误，请使用 HH:mm（例如 09:50）。"
+            error = L("结束时间格式有误，请使用 HH:mm（例如 09:50）。")
             return nil
         }
         let edited = PlanTask(id: task.id, startMinutes: start, endMinutes: end,
@@ -490,7 +492,7 @@ private struct TaskEditor: View {
     private func save() {
         guard let edited = validatedTask() else { return }
         if !PlanEditing.conflicts(for: edited, in: tasks).isEmpty {
-            error = "请选择可用空档、调整时间，或点击“替换这个时间段…”查看调整预览。"
+            error = L("请选择可用空档、调整时间，或点击“替换这个时间段…”查看调整预览。")
             return
         }
         if let message = onSave(edited) { error = message } else { onFinish() }

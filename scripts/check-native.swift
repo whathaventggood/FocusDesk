@@ -311,7 +311,38 @@ private enum NativeSmoke {
         defer { managementReload.stop() }
         try require(managementReload.activityTimers == store.activityTimers, "Rename and deletion should survive restart")
         try require(try Data(contentsOf: store.storageURL) == currentPlanData, "Managing activities must not change the plan")
+        try require(store.startActivityTimer(activityID: id, mode: .countdown, duration: 1) == nil, "Quiet countdown should start")
+        now = now.addingTimeInterval(1)
+        store.refresh()
+        let eventID = store.countdownCompletionEventID
+        try require(eventID != nil && store.activityTimers.displayedSession?.id == eventID, "Expired countdown must remain displayed")
+        now = now.addingTimeInterval(600)
+        store.refresh()
+        try require(store.countdownCompletionEventID == eventID, "Repeated refresh must not repeat the completion event")
+        try require(store.addTimedActivity(name: "新事项") == nil && store.timerNotice != nil, "Adding an activity must preserve the reminder")
+        let quietReload = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                    nowProvider: { now }, startClock: false)
+        defer { quietReload.stop() }
+        try require(quietReload.timerNotice != nil && quietReload.countdownCompletionEventID == nil, "Saved reminder must survive restart without replaying its animation")
+        try require(quietReload.renameTimedActivity(id: id, name: "读书") == nil && quietReload.countdownCompletionEventID == nil, "Editing an activity must not replay a saved reminder")
+        let reminderData = try Data(contentsOf: timersURL)
+        let reminder = quietReload.activityTimers
+        try FileManager.default.removeItem(at: timersURL)
+        try FileManager.default.createDirectory(at: timersURL, withIntermediateDirectories: true)
+        try require(quietReload.extendActivityCountdown() != nil, "Failed extension must report a save error")
+        try require(quietReload.finishActivityTimer() != nil && quietReload.activityTimers == reminder, "Failed completion must preserve the reminder and records")
+        try FileManager.default.removeItem(at: timersURL)
+        try reminderData.write(to: timersURL)
+        try require(quietReload.extendActivityCountdown() == nil, "Extension should recover after storage is restored")
+        try require(quietReload.activityTimers.activeSession?.remaining(at: now) == 300, "Extension must start five minutes at click time")
+        try require(quietReload.activityTimers.total(for: [id], at: now) == 166, "Waiting for a response must not count toward statistics")
+        now = now.addingTimeInterval(300)
+        quietReload.refresh()
+        try require(quietReload.countdownCompletionEventID != eventID && quietReload.timerNotice != nil, "Extended countdown should have its own completion event")
+        try require(quietReload.finishActivityTimer() == nil && quietReload.activityTimers.displayedSession == nil, "Acknowledgement must restore the schedule display")
+        try require(quietReload.activityTimers.total(for: [id], at: now) == 466, "Extension must accumulate under the original activity")
         print("PASS: activity timer pause, resume, restart, countdown deadline, storage retry and cumulative totals")
+        print("PASS: persistent quiet reminders, one-time completion events, extension, acknowledgement and failed-action recovery")
     }
 
     @MainActor
@@ -441,16 +472,96 @@ private enum NativeSmoke {
         timers[0].close()
         controller.setCompactHover(true)
         try writePreview(detail, to: output.appendingPathComponent("floating-timer.png"))
+        try writePreview(compact, to: output.appendingPathComponent("compact-timer.png"))
         try require(controller.store.toggleActivityTimerPause() == nil, "Widget timer should pause")
         try writePreview(detail, to: output.appendingPathComponent("floating-timer-paused.png"))
         controller.collapseDetails()
         try require(controller.store.finishActivityTimer() == nil, "Preview timer should finish")
+        try require(controller.store.startActivityTimer(activityID: activity.id, mode: .countdown, duration: 1) == nil, "Quiet preview countdown should start")
+        let keyWindow = NSApp.keyWindow
+        pumpEvents(for: 1.3)
+        controller.store.refresh()
+        try require(controller.store.activityTimers.pendingCountdown != nil, "Quiet preview countdown should remain visible after reaching zero")
+        try require(!detail.isVisible && NSApp.keyWindow === keyWindow && !compact.isKeyWindow, "Countdown expiry must not expand details or steal keyboard focus")
+        pumpEvents(for: 1.9)
+        try writePreview(compact, to: output.appendingPathComponent("compact-timer-due.png"))
+        controller.resizeCompact(to: 32)
+        pumpEvents(for: 0.05)
+        try writePreview(compact, to: output.appendingPathComponent("compact-timer-due-small.png"))
+        controller.resizeCompact(to: 112)
+        pumpEvents(for: 0.05)
+        try writePreview(compact, to: output.appendingPathComponent("compact-timer-due-large.png"))
+        controller.resizeCompact(to: CGFloat(PlanStore.defaultCompactSize))
+        controller.setCompactHover(true)
+        try writePreview(detail, to: output.appendingPathComponent("floating-timer-due.png"))
+        controller.showTimers()
+        try writePreview(timers[0], to: output.appendingPathComponent("timers-due.png"))
+        timers[0].close()
+        try require(controller.store.extendActivityCountdown() == nil, "Widget countdown should extend")
+        controller.setCompactHover(true)
+        try writePreview(detail, to: output.appendingPathComponent("floating-timer-extended.png"))
+        try require(controller.store.finishActivityTimer() == nil && controller.store.activityTimers.displayedSession == nil, "Finishing must restore the daily schedule")
+        try writePreview(detail, to: output.appendingPathComponent("floating-timer-finished.png"))
+        controller.collapseDetails()
         try require(controller.store.addTimedActivity(name: "运动") == nil, "Second preview activity should save")
         try require(controller.store.addTimedActivity(name: "练字") == nil, "Third preview activity should save")
         timers[0].setContentSize(NSSize(width: 800, height: 900))
         controller.showTimers()
         try writePreview(timers[0], to: output.appendingPathComponent("timers-management.png"))
         timers[0].close()
+        // Exercise every palette and effect through the same windows used by the app.
+        let timerFileBeforeThemes = try Data(contentsOf: controller.store.storageURL.deletingLastPathComponent().appendingPathComponent("timers.json"))
+        for theme in DeskTheme.allCases {
+            controller.store.theme = theme
+            controller.setCompactHover(true)
+            pumpEvents(for: 0.08)
+            try writePreview(detail, to: output.appendingPathComponent("theme-\(theme.rawValue).png"))
+            try writePreview(compact, to: output.appendingPathComponent("square-\(theme.rawValue).png"))
+        }
+        controller.store.theme = .cyber
+        controller.store.effectIntensity = .dramatic
+        for effect in CountdownEffect.allCases {
+            controller.store.countdownEffect = effect
+            let previousKey = NSApp.keyWindow
+            controller.playCountdownEffect(preview: true)
+            pumpEvents(for: 0.5)
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let overlay = NSApp.windows.first { $0.title == "FocusDesk 到时特效" && $0.isVisible }
+                try require(overlay != nil && overlay!.ignoresMouseEvents && !overlay!.canBecomeKey, "Effects must pass clicks through and never accept focus")
+                try require(NSApp.keyWindow === previousKey, "Effect preview must preserve keyboard focus")
+                try writePreview(overlay!, to: output.appendingPathComponent("effect-\(effect.rawValue).png"))
+            }
+        }
+        pumpEvents(for: 4.2)
+        try require(!NSApp.windows.contains { $0.title == "FocusDesk 到时特效" && $0.isVisible }, "Effect window must disappear after playback")
+        controller.store.effectsEnabled = false
+        controller.playCountdownEffect(preview: true)
+        try require(!NSApp.windows.contains { $0.title == "FocusDesk 到时特效" && $0.isVisible }, "Disabled effects must not create a visible overlay")
+        controller.store.effectsEnabled = true
+        controller.store.theme = .vintage
+        controller.showSettings()
+        try writePreview(settings[0], to: output.appendingPathComponent("theme-settings.png"))
+        settings[0].close()
+        let appearanceReload = PlanStore(storageDirectory: controller.store.storageURL.deletingLastPathComponent(),
+                                         defaults: controller.store.defaults, allowsLoginItemChanges: false, startClock: false)
+        defer { appearanceReload.stop() }
+        try require(appearanceReload.theme == .vintage && appearanceReload.countdownEffect == .pixels && appearanceReload.effectIntensity == .dramatic, "Theme and effect choices must survive reload")
+        try require(try Data(contentsOf: controller.store.storageURL.deletingLastPathComponent().appendingPathComponent("timers.json")) == timerFileBeforeThemes, "Appearance changes and previews must not alter timer records")
+        controller.store.defaults.set("unknown-theme", forKey: "appearance.theme")
+        let fallback = PlanStore(storageDirectory: controller.store.storageURL.deletingLastPathComponent(), defaults: controller.store.defaults, allowsLoginItemChanges: false, startClock: false)
+        defer { fallback.stop() }
+        try require(fallback.theme == .classic, "Unknown saved themes must fall back safely")
+        print("PASS: all themes, effect overlays, focus, click-through, cleanup, preferences and unchanged timer data")
+        controller.store.language = .english
+        controller.store.theme = .terminal
+        controller.showSettings()
+        try writePreview(settings[0], to: output.appendingPathComponent("settings-en.png"))
+        settings[0].close()
+        controller.setCompactHover(true)
+        try writePreview(detail, to: output.appendingPathComponent("floating-en.png"))
+        try require(L("已到时") == "Time's up", "English UI translation")
+        try require(L("%@，%@", "Name %@", "done") == "Name %@, done", "Interpolation must preserve percent signs in user names")
+        controller.store.language = .chinese
         controller.store.setLaunchAtLogin(true)
         try require(controller.store.errorMessage?.contains("测试模式") == true, "Smoke mode must block system login-item changes")
         print("PASS: nonactivating compact/detail panels, hover transitions, resize, geometry, reusable plan/settings/history windows")

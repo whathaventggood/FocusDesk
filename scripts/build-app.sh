@@ -57,6 +57,8 @@ cp "$PROJECT_ROOT/FocusDesk/Resources/Info.plist" "$APP_PATH/Contents/Info.plist
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName FocusDesk' "$APP_PATH/Contents/Info.plist"
 printf 'APPL????' > "$APP_PATH/Contents/PkgInfo"
 
+/usr/libexec/PlistBuddy -c "Add :FocusDeskDefaultLanguage string ${FOCUSDESK_DEFAULT_LANGUAGE:-zh-Hans}" "$APP_PATH/Contents/Info.plist"
+
 # Ad-hoc signing is sufficient to run a locally built app on this Mac.
 # Desktop/iCloud file providers may attach FinderInfo to generated bundles.
 # Clear extended attributes only on this generated app before sealing it.

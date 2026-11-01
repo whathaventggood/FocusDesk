@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable><ImplicitUsings>disable</ImplicitUsings><Version>3.0.0</Version>
+    <AssemblyName>FocusDesk</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup><EmbeddedResource Include="../../shared/*.json" Link="Shared/%(Filename)%(Extension)" /></ItemGroup>
+</Project>

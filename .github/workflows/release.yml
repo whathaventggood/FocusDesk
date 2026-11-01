@@ -2,7 +2,7 @@ name: Release candidate
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v2.*']
 
 permissions:
   contents: read

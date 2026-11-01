@@ -58,18 +58,18 @@ enum PlanValidator {
         var identifiers = Set<UUID>()
         for task in tasks {
             guard identifiers.insert(task.id).inserted else {
-                return "计划中存在重复的任务标识，请删除并重新创建重复的任务。"
+                return L("计划中存在重复的任务标识，请删除并重新创建重复的任务。")
             }
             let label = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !label.isEmpty else { return "请输入任务名称。" }
+            guard !label.isEmpty else { return L("请输入任务名称。") }
             guard (0..<1_440).contains(task.startMinutes) else {
-                return "“\(label)”的开始时间必须在 00:00 至 23:59 之间。"
+                return L("“%@”的开始时间必须在 00:00 至 23:59 之间。", "\(label)")
             }
             guard (1...1_440).contains(task.endMinutes) else {
-                return "“\(label)”的结束时间必须在 00:01 至 24:00 之间。"
+                return L("“%@”的结束时间必须在 00:01 至 24:00 之间。", "\(label)")
             }
             guard task.endMinutes > task.startMinutes else {
-                return "“\(label)”的结束时间必须晚于开始时间；跨午夜的任务请拆成两段。"
+                return L("“%@”的结束时间必须晚于开始时间；跨午夜的任务请拆成两段。", "\(label)")
             }
         }
 
@@ -79,7 +79,7 @@ enum PlanValidator {
         }
         for (previous, next) in zip(sorted, sorted.dropFirst()) {
             if next.startMinutes < previous.endMinutes {
-                return "“\(previous.title)”与“\(next.title)”的时间段重叠，请调整时间。"
+                return L("“%@”与“%@”的时间段重叠，请调整时间。", "\(previous.title)", "\(next.title)")
             }
         }
         return nil

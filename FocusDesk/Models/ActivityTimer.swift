@@ -8,13 +8,13 @@ struct TimedActivity: Codable, Equatable, Identifiable {
 enum ActivityTimerMode: String, Codable, CaseIterable {
     case stopwatch, countdown
 
-    var title: String { self == .stopwatch ? "正计时" : "倒计时" }
+    var title: String { self == .stopwatch ? L("正计时") : L("倒计时") }
 }
 
 enum ActivityDurationSortOrder: String, CaseIterable {
     case descending, ascending
 
-    var title: String { self == .ascending ? "时长升序（短 → 长）" : "时长降序（长 → 短）" }
+    var title: String { self == .ascending ? L("时长升序（短 → 长）") : L("时长降序（长 → 短）") }
 }
 
 struct ActivityDurationSummary: Identifiable {
@@ -47,7 +47,13 @@ struct ActivityTimerSession: Codable, Equatable, Identifiable {
     var endedAt: Date?
 
     var isPaused: Bool { runningSince == nil && endedAt == nil }
+    var isAwaitingCompletion: Bool { mode == .countdown && endedAt != nil }
     var savedDuration: TimeInterval { segments.reduce(0) { $0 + $1.duration } }
+
+    func progress(at date: Date) -> Double {
+        guard let targetDuration, targetDuration > 0 else { return 0 }
+        return min(1, max(0, elapsed(at: date) / targetDuration))
+    }
 
     func elapsed(at date: Date) -> TimeInterval {
         savedDuration + (liveSegment(at: date)?.duration ?? 0)
@@ -86,28 +92,32 @@ struct ActivityTimerDocument: Codable, Equatable {
     var version = 1
     var activities: [TimedActivity] = []
     var sessions: [ActivityTimerSession] = []
+    // Optional for compatibility with timer files created before quiet reminders.
+    var pendingCountdownSessionID: UUID?
 
     var activeSession: ActivityTimerSession? { sessions.first { $0.endedAt == nil } }
+    var pendingCountdown: ActivityTimerSession? { sessions.first { $0.id == pendingCountdownSessionID } }
+    var displayedSession: ActivityTimerSession? { activeSession ?? pendingCountdown }
 
     mutating func addActivity(name: String) throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw ActivityTimerError.invalid("请输入事项名称。") }
+        guard !trimmed.isEmpty else { throw ActivityTimerError.invalid(L("请输入事项名称。")) }
         guard !activities.contains(where: { $0.name.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) else {
-            throw ActivityTimerError.invalid("已有同名事项，请选择已有事项继续累计。")
+            throw ActivityTimerError.invalid(L("已有同名事项，请选择已有事项继续累计。"))
         }
         activities.append(TimedActivity(name: trimmed))
     }
 
     mutating func renameActivity(id: UUID, name: String) throws {
         guard let index = activities.firstIndex(where: { $0.id == id }) else {
-            throw ActivityTimerError.invalid("这个事项已不存在，请刷新后重试。")
+            throw ActivityTimerError.invalid(L("这个事项已不存在，请刷新后重试。"))
         }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw ActivityTimerError.invalid("请输入事项名称。") }
+        guard !trimmed.isEmpty else { throw ActivityTimerError.invalid(L("请输入事项名称。")) }
         guard !activities.contains(where: {
             $0.id != id && $0.name.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
         }) else {
-            throw ActivityTimerError.invalid("已有同名事项，请使用其他名称。")
+            throw ActivityTimerError.invalid(L("已有同名事项，请使用其他名称。"))
         }
         activities[index].name = trimmed
     }
@@ -115,23 +125,25 @@ struct ActivityTimerDocument: Codable, Equatable {
     /// Removing the sessions in the same commit prevents orphaned records and stale running timers.
     mutating func deleteActivity(id: UUID) throws {
         guard activities.contains(where: { $0.id == id }) else {
-            throw ActivityTimerError.invalid("这个事项已不存在，请刷新后重试。")
+            throw ActivityTimerError.invalid(L("这个事项已不存在，请刷新后重试。"))
         }
         activities.removeAll { $0.id == id }
         sessions.removeAll { $0.activityID == id }
+        if pendingCountdown == nil { pendingCountdownSessionID = nil }
     }
 
     mutating func start(activityID: UUID, mode: ActivityTimerMode, duration: TimeInterval?, at date: Date) throws {
-        guard activeSession == nil else { throw ActivityTimerError.invalid("请先结束当前计时，再开始其他计时。") }
-        guard activities.contains(where: { $0.id == activityID }) else { throw ActivityTimerError.invalid("请选择一个事项。") }
+        guard activeSession == nil else { throw ActivityTimerError.invalid(L("请先结束当前计时，再开始其他计时。")) }
+        guard activities.contains(where: { $0.id == activityID }) else { throw ActivityTimerError.invalid(L("请选择一个事项。")) }
         if mode == .countdown {
             guard let duration, duration.isFinite, duration >= 1, duration <= 604_800 else {
-                throw ActivityTimerError.invalid("倒计时时长须为 1 秒至 7 天。")
+                throw ActivityTimerError.invalid(L("倒计时时长须为 1 秒至 7 天。"))
             }
         }
         sessions.append(ActivityTimerSession(activityID: activityID, mode: mode,
                                             targetDuration: mode == .countdown ? duration : nil,
                                             startedAt: date, runningSince: date))
+        pendingCountdownSessionID = nil
     }
 
     @discardableResult
@@ -140,7 +152,17 @@ struct ActivityTimerDocument: Codable, Equatable {
               sessions[index].mode == .countdown, sessions[index].runningSince != nil,
               sessions[index].remaining(at: date) <= 0 else { return false }
         sessions[index].finish(at: date)
+        pendingCountdownSessionID = sessions[index].id
         return true
+    }
+
+    /// A fresh stretch excludes the time spent waiting for the user to respond.
+    mutating func extendCountdown(at date: Date) throws {
+        completeCountdown(at: date)
+        guard let completed = pendingCountdown else {
+            throw ActivityTimerError.invalid(L("请在倒计时到时后延长计时。"))
+        }
+        try start(activityID: completed.activityID, mode: .countdown, duration: 300, at: date)
     }
 
     mutating func togglePause(at date: Date) {
@@ -154,6 +176,7 @@ struct ActivityTimerDocument: Codable, Equatable {
     }
 
     mutating func finish(at date: Date) {
+        pendingCountdownSessionID = nil
         guard let index = sessions.firstIndex(where: { $0.endedAt == nil }) else { return }
         sessions[index].finish(at: date)
     }
@@ -180,41 +203,48 @@ struct ActivityTimerDocument: Codable, Equatable {
     }
 
     func validate() throws {
-        guard version == 1 else { throw ActivityTimerError.invalid("无法识别事项计时数据版本。") }
+        guard version == 1 else { throw ActivityTimerError.invalid(L("无法识别事项计时数据版本。")) }
         let ids = Set(activities.map(\.id))
         guard ids.count == activities.count,
               activities.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               Set(sessions.map(\.id)).count == sessions.count,
               sessions.filter({ $0.endedAt == nil }).count <= 1 else {
-            throw ActivityTimerError.invalid("事项名称、标识或运行中的计时无效。")
+            throw ActivityTimerError.invalid(L("事项名称、标识或运行中的计时无效。"))
+        }
+        if pendingCountdownSessionID != nil {
+            guard activeSession == nil, let pending = pendingCountdown,
+                  pending.mode == .countdown, pending.endedAt != nil,
+                  let target = pending.targetDuration, abs(pending.savedDuration - target) <= 0.001 else {
+                throw ActivityTimerError.invalid(L("倒计时到时提醒无效。"))
+            }
         }
         for session in sessions {
             guard ids.contains(session.activityID), session.startedAt.timeIntervalSinceReferenceDate.isFinite,
                   session.endedAt?.timeIntervalSinceReferenceDate.isFinite ?? true,
                   session.runningSince?.timeIntervalSinceReferenceDate.isFinite ?? true,
                   session.endedAt == nil || session.runningSince == nil else {
-                throw ActivityTimerError.invalid("事项计时记录无效。")
+                throw ActivityTimerError.invalid(L("事项计时记录无效。"))
             }
             if session.mode == .countdown {
                 guard let target = session.targetDuration, target.isFinite, (1...604_800).contains(target),
                       session.savedDuration <= target + 0.001 else {
-                    throw ActivityTimerError.invalid("倒计时时长无效。")
+                    throw ActivityTimerError.invalid(L("倒计时时长无效。"))
                 }
             } else if session.targetDuration != nil {
-                throw ActivityTimerError.invalid("正计时记录包含无效的目标时长。")
+                throw ActivityTimerError.invalid(L("正计时记录包含无效的目标时长。"))
             }
             var previous = session.startedAt
             for segment in session.segments {
                 guard segment.start.timeIntervalSinceReferenceDate.isFinite,
                       segment.end.timeIntervalSinceReferenceDate.isFinite,
                       segment.start >= previous, segment.end >= segment.start else {
-                    throw ActivityTimerError.invalid("事项计时片段无效。")
+                    throw ActivityTimerError.invalid(L("事项计时片段无效。"))
                 }
                 previous = segment.end
             }
             guard session.runningSince.map({ $0 >= previous }) ?? true,
                   session.endedAt.map({ $0 >= previous }) ?? true else {
-                throw ActivityTimerError.invalid("事项计时顺序无效。")
+                throw ActivityTimerError.invalid(L("事项计时顺序无效。"))
             }
         }
     }
@@ -235,7 +265,7 @@ enum ActivityDurationFormat {
 
     static func summary(_ duration: TimeInterval) -> String {
         let seconds = Int(max(0, floor(duration)))
-        return "\(seconds / 3600) 小时 \(seconds % 3600 / 60) 分 \(seconds % 60) 秒"
+        return L("%@ 小时 %@ 分 %@ 秒", "\(seconds / 3600)", "\(seconds % 3600 / 60)", "\(seconds % 60)")
     }
 }
 

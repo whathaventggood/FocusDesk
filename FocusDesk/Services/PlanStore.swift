@@ -14,7 +14,7 @@ final class PlanStore: ObservableObject {
     @Published private(set) var motivationalQuote: MotivationalQuote
     @Published private(set) var errorMessage: String?
     @Published private(set) var launchAtLogin = false
-    @Published private(set) var launchAtLoginStatus = "未开启"
+    @Published private(set) var launchAtLoginStatus = L("未开启")
     @Published private(set) var isFloatingVisible = true
     @Published private(set) var isExpanded = false
     @Published private(set) var todayProgress: DailyProgress
@@ -22,7 +22,13 @@ final class PlanStore: ObservableObject {
     @Published private(set) var needsDataRecovery = false
     @Published private(set) var activityTimers: ActivityTimerDocument
     @Published private(set) var activityTimerError: String?
-    @Published private(set) var timerNotice: String?
+    @Published private(set) var countdownCompletionEventID: UUID?
+
+    var timerNotice: String? {
+        guard let session = activityTimers.pendingCountdown else { return nil }
+        let name = activityTimers.activities.first { $0.id == session.activityID }?.name ?? L("事项")
+        return L("%@已到时 · 可继续专注", "\(name)")
+    }
 
     @Published var compactSize: Double {
         didSet {
@@ -35,6 +41,28 @@ final class PlanStore: ObservableObject {
     @Published var alwaysOnTop: Bool {
         didSet { defaults.set(alwaysOnTop, forKey: "alwaysOnTop") }
     }
+
+    @Published var language: AppLanguage = .chinese {
+        didSet {
+            AppLanguage.current = language
+            defaults.set(language.rawValue, forKey: "appearance.language")
+            motivationalQuote = quoteRotation.quote(at: now)
+        }
+    }
+
+    @Published var theme: DeskTheme = .classic {
+        didSet { defaults.set(theme.rawValue, forKey: "appearance.theme") }
+    }
+    @Published var countdownEffect: CountdownEffect = .soft {
+        didSet { defaults.set(countdownEffect.rawValue, forKey: "appearance.effect") }
+    }
+    @Published var effectIntensity: EffectIntensity = .standard {
+        didSet { defaults.set(effectIntensity.rawValue, forKey: "appearance.intensity") }
+    }
+    @Published var effectsEnabled = true {
+        didSet { defaults.set(effectsEnabled, forKey: "appearance.effectsEnabled") }
+    }
+    var onPreviewEffect: (() -> Void)?
 
     var onShowPlan: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -64,8 +92,15 @@ final class PlanStore: ObservableObject {
     ) {
         let date = nowProvider()
         let calendar = DailyProgress.localCalendar(calendarProvider())
+        let initialLanguage = AppLanguage(rawValue: defaults.object(forKey: "appearance.language") as? String ?? "") ?? AppLanguage.packagedDefault
+        AppLanguage.current = initialLanguage
+        self.language = initialLanguage
         let initialTasks = DefaultPlan.tasks.sorted { $0.startMinutes < $1.startMinutes }
         self.defaults = defaults
+        theme = DeskTheme(rawValue: defaults.object(forKey: "appearance.theme") as? String ?? "") ?? .classic
+        countdownEffect = CountdownEffect(rawValue: defaults.object(forKey: "appearance.effect") as? String ?? "") ?? .soft
+        effectIntensity = EffectIntensity(rawValue: defaults.object(forKey: "appearance.intensity") as? String ?? "") ?? .standard
+        effectsEnabled = defaults.object(forKey: "appearance.effectsEnabled") as? Bool ?? true
         self.allowsLoginItemChanges = allowsLoginItemChanges
         self.nowProvider = nowProvider
         self.calendarProvider = calendarProvider
@@ -170,20 +205,26 @@ final class PlanStore: ObservableObject {
         return updateActivityTimers { $0.finish(at: date) }
     }
 
-    func dismissTimerNotice() { timerNotice = nil }
+    @discardableResult
+    func extendActivityCountdown() -> String? {
+        let date = nowProvider()
+        return updateActivityTimers { try $0.extendCountdown(at: date) }
+    }
 
     private func updateActivityTimers(_ change: (inout ActivityTimerDocument) throws -> Void) -> String? {
         var candidate = activityTimers
         do {
             try change(&candidate)
             try activityTimerStore.save(candidate)
+            let newlyCompletedID = candidate.pendingCountdownSessionID != activityTimers.pendingCountdownSessionID
+                ? candidate.pendingCountdownSessionID : nil
             activityTimers = candidate
             activityTimerError = nil
-            timerNotice = nil
+            if let newlyCompletedID { countdownCompletionEventID = newlyCompletedID }
             now = nowProvider()
             return nil
         } catch {
-            let message = "事项计时未保存：\(error.localizedDescription)"
+            let message = L("事项计时未保存：%@", "\(error.localizedDescription)")
             activityTimerError = message
             return message
         }
@@ -191,18 +232,15 @@ final class PlanStore: ObservableObject {
 
     private func refreshActivityTimer(at date: Date) {
         var candidate = activityTimers
-        let completed = candidate.activeSession
         guard candidate.completeCountdown(at: date) else { return }
         do {
             try activityTimerStore.save(candidate)
             activityTimers = candidate
             activityTimerError = nil
-            let name = candidate.activities.first { $0.id == completed?.activityID }?.name ?? "事项"
-            timerNotice = "\(name)的倒计时已完成，时长已计入累计记录。"
-            // Refreshes after wake/relaunch also complete exactly once, without requiring notification access.
-            if timer != nil { NSSound.beep() }
+            // Views react once to this event; loading a saved reminder does not replay it.
+            countdownCompletionEventID = candidate.pendingCountdownSessionID
         } catch {
-            activityTimerError = "倒计时已到时，记录保存失败，将自动重试：\(error.localizedDescription)"
+            activityTimerError = L("倒计时已到时，记录保存失败，将自动重试：%@", "\(error.localizedDescription)")
         }
     }
 
@@ -216,7 +254,7 @@ final class PlanStore: ObservableObject {
         let calendar = DailyProgress.localCalendar(calendarProvider())
         var updated = progress(for: tasks, at: date, calendar: calendar)
         guard updated.toggleCompletion(id: id, at: date) else {
-            return "这个任务已不存在，请刷新今日计划后重试。"
+            return L("这个任务已不存在，请刷新今日计划后重试。")
         }
         return commit(tasks: tasks, progress: updated, at: date, calendar: calendar)
     }
@@ -250,7 +288,7 @@ final class PlanStore: ObservableObject {
             errorMessage = nil
             return nil
         } catch {
-            let message = "恢复失败：\(error.localizedDescription)"
+            let message = L("恢复失败：%@", "\(error.localizedDescription)")
             errorMessage = message
             return message
         }
@@ -290,7 +328,7 @@ final class PlanStore: ObservableObject {
 
     func setLaunchAtLogin(_ enabled: Bool) {
         guard allowsLoginItemChanges else {
-            errorMessage = "测试模式下不会更改系统登录项。"
+            errorMessage = L("测试模式下不会更改系统登录项。")
             return
         }
         do {
@@ -302,7 +340,7 @@ final class PlanStore: ObservableObject {
             refreshLoginStatus()
         } catch {
             refreshLoginStatus()
-            errorMessage = "无法更改登录时启动：\(error.localizedDescription)\n请将 FocusDesk.app 放入“应用程序”后重试。"
+            errorMessage = L("无法更改登录时启动：%@\n请将 FocusDesk.app 放入“应用程序”后重试。", "\(error.localizedDescription)")
         }
     }
 
@@ -310,19 +348,19 @@ final class PlanStore: ObservableObject {
         switch SMAppService.mainApp.status {
         case .enabled:
             launchAtLogin = true
-            launchAtLoginStatus = "已开启，登录 macOS 后自动启动"
+            launchAtLoginStatus = L("已开启，登录 macOS 后自动启动")
         case .requiresApproval:
             launchAtLogin = true
-            launchAtLoginStatus = "等待系统批准，请在系统设置 → 通用 → 登录项中允许 FocusDesk"
+            launchAtLoginStatus = L("等待系统批准，请在系统设置 → 通用 → 登录项中允许 FocusDesk")
         case .notRegistered:
             launchAtLogin = false
-            launchAtLoginStatus = "未开启"
+            launchAtLoginStatus = L("未开启")
         case .notFound:
             launchAtLogin = false
-            launchAtLoginStatus = "请先将 FocusDesk.app 放入“应用程序”"
+            launchAtLoginStatus = L("请先将 FocusDesk.app 放入“应用程序”")
         @unknown default:
             launchAtLogin = false
-            launchAtLoginStatus = "无法读取登录项状态"
+            launchAtLoginStatus = L("无法读取登录项状态")
         }
     }
 
@@ -374,7 +412,7 @@ final class PlanStore: ObservableObject {
     }
 
     private func saveFailure(_ error: Error) -> String {
-        "计划与完成记录保存失败，本次修改未保存：\(error.localizedDescription)\n请检查存储空间和文件夹权限。"
+        L("计划与完成记录保存失败，本次修改未保存：%@\n请检查存储空间和文件夹权限。", "\(error.localizedDescription)")
     }
 
     private func beginClock() {

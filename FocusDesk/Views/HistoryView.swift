@@ -20,22 +20,22 @@ struct HistoryView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("专注记录").font(.system(size: 25, weight: .bold))
-                    Text("回顾每天的计划与完成情况")
+                    Text(L("专注记录")).font(.system(size: 25, weight: .bold))
+                    Text(L("回顾每天的计划与完成情况"))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("事项时长") { store.onShowTimers?() }
-                Button("今日计划") { store.onShowPlan?() }
+                Button(L("事项时长")) { store.onShowTimers?() }
+                Button(L("今日计划")) { store.onShowPlan?() }
             }
             .padding(24)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Picker("统计范围", selection: $range) {
-                        Text("近 7 天").tag(7)
-                        Text("近 30 天").tag(30)
-                        Text("全部").tag(0)
+                    Picker(L("统计范围"), selection: $range) {
+                        Text(L("近 7 天")).tag(7)
+                        Text(L("近 30 天")).tag(30)
+                        Text(L("全部")).tag(0)
                     }
                     .pickerStyle(.segmented)
                     if let message = store.errorMessage {
@@ -45,24 +45,24 @@ struct HistoryView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: 14) {
-                        ProgressStat(title: "完成率", value: total == 0 ? "—" : "\(Int((Double(completed) / Double(total) * 100).rounded()))%")
-                        ProgressStat(title: "已完成任务", value: "\(completed) / \(total)")
-                        ProgressStat(title: "记录天数", value: "\(records.count) 天")
+                        ProgressStat(title: L("完成率"), value: total == 0 ? "—" : "\(Int((Double(completed) / Double(total) * 100).rounded()))%")
+                        ProgressStat(title: L("已完成任务"), value: "\(completed) / \(total)")
+                        ProgressStat(title: L("记录天数"), value: L("%@ 天", "\(records.count)"))
                     }
-                    Text("完成率 = 手动标记完成的任务数 ÷ 计划任务数，包含休息等全部任务。仅统计有记录的日期；未运行的日期不补记，时间结束不会自动完成。")
+                    Text(L("完成率 = 手动标记完成的任务数 ÷ 计划任务数，包含休息等全部任务。仅统计有记录的日期；未运行的日期不补记，时间结束不会自动完成。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if !records.isEmpty {
                         VStack(alignment: .leading, spacing: 11) {
-                            Text("每日完成率").font(.headline)
+                            Text(L("每日完成率")).font(.headline)
                             ForEach(Array(records.prefix(14).reversed())) { record in
                                 HStack(spacing: 12) {
                                     Text(record.day).font(.system(size: 11, design: .monospaced))
                                         .frame(width: 88, alignment: .leading)
                                     ProgressView(value: record.completionRate)
                                         .tint(.accentColor)
-                                    Text(record.totalCount == 0 ? "无任务" : "\(Int((record.completionRate * 100).rounded()))%")
+                                    Text(record.totalCount == 0 ? L("无任务") : "\(Int((record.completionRate * 100).rounded()))%")
                                         .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .frame(width: 44, alignment: .trailing)
@@ -83,7 +83,7 @@ struct HistoryView: View {
                         )
                     }
                     if records.isEmpty {
-                        Text("这个时间范围还没有记录。完成今日任务后，在计划列表中勾选即可。")
+                        Text(L("这个时间范围还没有记录。完成今日任务后，在计划列表中勾选即可。"))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 50)
@@ -94,6 +94,8 @@ struct HistoryView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(minWidth: 650, idealWidth: 800, minHeight: 520, idealHeight: 720)
+        .modifier(ThemeSurface(store: store))
+        .id(store.language)
         .onAppear { if expandedDay == nil { expandedDay = store.todayProgress.day } }
         .onChange(of: store.todayProgress.day) { expandedDay = $0 }
     }
@@ -129,10 +131,10 @@ private struct DailyHistoryCard: View {
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("记录时区：\(record.timeZoneIdentifier)")
+                Text(L("记录时区：%@", "\(record.timeZoneIdentifier)"))
                     .font(.caption).foregroundStyle(.secondary)
                 if record.tasks.isEmpty {
-                    Text("当天没有安排任务").foregroundStyle(.secondary)
+                    Text(L("当天没有安排任务")).foregroundStyle(.secondary)
                 }
                 ForEach(record.tasks) { item in
                     HStack(alignment: .top, spacing: 10) {
@@ -140,7 +142,7 @@ private struct DailyHistoryCard: View {
                             .foregroundStyle(item.completedAt == nil ? Color.secondary : .green)
                         VStack(alignment: .leading, spacing: 5) {
                             Text(item.task.title).font(.callout.weight(.medium))
-                            Text("\(TimeInput.format(item.task.startMinutes))–\(TimeInput.format(item.task.endMinutes)) · \(item.completedAt == nil ? "未完成" : "已完成")")
+                            Text(L("%@–%@ · %@", "\(TimeInput.format(item.task.startMinutes))", "\(TimeInput.format(item.task.endMinutes))", "\(item.completedAt == nil ? "未完成" : "已完成")"))
                                 .font(.caption).foregroundStyle(.secondary)
                             if !item.task.details.isEmpty {
                                 Text(item.task.details).font(.caption).foregroundStyle(.secondary)
@@ -153,9 +155,9 @@ private struct DailyHistoryCard: View {
             .padding(.top, 14)
         } label: {
             HStack {
-                Text(record.day + (isToday ? " · 今天" : "")).font(.headline)
+                Text(record.day + (isToday ? L(" · 今天") : "")).font(.headline)
                 Spacer()
-                Text("\(record.completedCount) / \(record.totalCount) 已完成")
+                Text(L("%@ / %@ 已完成", "\(record.completedCount)", "\(record.totalCount)"))
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
