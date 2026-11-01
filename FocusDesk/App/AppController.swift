@@ -63,7 +63,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }()
     private var panel: NSPanel?
     private var compactPanel: NSPanel?
-    private var effectPanel: NSPanel?
+    private(set) var effectPanels: [NSPanel] = []
     private var effectGeneration = UUID()
     private var planWindow: NSWindow?
     private var settingsWindow: NSWindow?
@@ -96,6 +96,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         createMainMenu()
         createStatusItem()
         createPanels()
+        store.onStopEffect = { [weak self] in self?.stopCountdownEffect() }
+        store.$effectsEnabled.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
+            if !enabled { self?.stopCountdownEffect() }
+        }.store(in: &subscriptions)
         store.onPreviewEffect = { [weak self] in self?.playCountdownEffect(preview: true) }
         store.$countdownCompletionEventID.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] id in
             guard id != nil else { return }
@@ -126,35 +130,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         )
     }
 
+    @objc func stopCountdownEffect() {
+        effectGeneration = UUID()
+        for window in effectPanels { window.orderOut(nil); window.contentView = nil; window.close() }
+        effectPanels.removeAll()
+    }
+
     func playCountdownEffect(preview: Bool = false) {
+        stopCountdownEffect()
         guard store.effectsEnabled, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              let compact = compactPanel, compact.isVisible else { return }
-        effectPanel?.orderOut(nil)
-        effectPanel?.contentView = nil
-        effectPanel?.close()
-        let window = desktopPanel(size: NSSize(width: 360, height: 360), title: L("FocusDesk 到时特效"))
-        window.ignoresMouseEvents = true
-        window.hasShadow = false
-        window.animationBehavior = .none
-        window.level = compact.level
-        window.contentView = NSHostingView(rootView: CountdownEffectView(
-            theme: store.theme, effect: store.countdownEffect,
-            intensity: store.effectIntensity, startedAt: Date()))
-        window.setFrameOrigin(NSPoint(x: compact.frame.midX - 180, y: compact.frame.midY - 180))
-        window.orderFrontRegardless()
-        effectPanel = window
-        let generation = UUID()
-        effectGeneration = generation
-        DispatchQueue.main.asyncAfter(deadline: .now() + store.effectIntensity.duration + 0.1) { [weak self] in
+              let compact = compactPanel, preview || compact.isVisible,
+              let current = compact.screen ?? NSScreen.main else { return }
+        let c = store.effectConfiguration.normalized
+        let started = Date()
+        for screen in c.allScreens ? NSScreen.screens : [current] {
+            let frame = screen.frame
+            let origin = CGPoint(x: min(frame.width, max(0, compact.frame.midX-frame.minX)),
+                                 y: min(frame.height, max(0, frame.maxY-compact.frame.midY)))
+            let window = desktopPanel(size: frame.size, title: L("FocusDesk 到时特效"))
+            window.ignoresMouseEvents = true
+            window.hasShadow = false
+            window.animationBehavior = .none
+            window.level = .statusBar
+            window.contentView = NSHostingView(rootView: CountdownEffectView(
+                theme: store.theme, effect: store.countdownEffect, configuration: c, origin: origin,
+                radius: EffectGeometry.radius(size: frame.size, origin: origin, coverage: c.coverage), startedAt: started))
+            window.setFrame(frame, display: false)
+            window.orderFrontRegardless()
+            effectPanels.append(window)
+        }
+        let generation = UUID(); effectGeneration = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + c.duration + 0.1) { [weak self] in
             guard let self, self.effectGeneration == generation else { return }
-            self.effectPanel?.orderOut(nil)
-            self.effectPanel?.contentView = nil
-            self.effectPanel?.close()
-            self.effectPanel = nil
+            self.stopCountdownEffect()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopCountdownEffect()
         pendingHide?.cancel()
         pendingHide = nil
         savePanelPosition()
@@ -431,6 +444,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     @objc private func screenConfigurationChanged() {
+        stopCountdownEffect()
         correctPanelPosition()
     }
 
@@ -515,6 +529,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         addMenuItem(L("今日计划…"), action: #selector(showPlan), to: menu)
         addMenuItem(L("专注记录…"), action: #selector(showHistory), to: menu)
         addMenuItem(L("事项计时…"), action: #selector(showTimers), to: menu)
+        addMenuItem(L("停止特效"), action: #selector(stopCountdownEffect), to: menu)
         addMenuItem(L("设置…"), action: #selector(showSettings), to: menu)
         menu.addItem(.separator())
         addMenuItem(L("退出 FocusDesk"), action: #selector(quit), key: "q", to: menu)

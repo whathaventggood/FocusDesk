@@ -52,6 +52,8 @@ public sealed class DayRecord {
 }
 public sealed class Preferences {
     public string Language {get;set;}="zh-Hans"; public string Theme {get;set;}="classic"; public string Effect {get;set;}="soft";
+    public EffectConfiguration? ScreenEffect {get;set;}
+    [System.Text.Json.Serialization.JsonIgnore] public EffectConfiguration EffectOptions => ScreenEffect??EffectConfiguration.Preset(Intensity);
     public int Intensity {get;set;}=1; public bool Effects {get;set;}=true; public bool OnTop {get;set;}=true; public double Size {get;set;}=56;
     public double X {get;set;}=80; public double Y {get;set;}=80; public string QuoteId {get;set;}=""; public DateTimeOffset QuoteAt {get;set;}
 }
@@ -73,7 +75,8 @@ public sealed class Document {
             if(s.RunningSince<previous||s.EndedAt<previous) throw new InvalidDataException("Invalid timer sequence");
         }
         if(Pending is {} id && (Active!=null||Sessions.All(s=>s.Id!=id||s.EndedAt==null||s.Target==null||Math.Abs(s.Saved-s.Target.Value)>0.001))) throw new InvalidDataException("Invalid pending reminder");
-        var p=Preferences; if(!double.IsFinite(p.Size)||!double.IsFinite(p.X)||!double.IsFinite(p.Y)||p.Size<32||p.Size>112||p.Intensity<0||p.Intensity>2) throw new InvalidDataException("Invalid window preferences");
+        Preferences.ScreenEffect = Preferences.EffectOptions.Normalized();
+        var p=Preferences; if(!double.IsFinite(p.Size)||!double.IsFinite(p.X)||!double.IsFinite(p.Y)||p.Size<32||p.Size>112||p.Intensity<0||p.Intensity>3) throw new InvalidDataException("Invalid window preferences");
     }
 }
 public sealed class Store {

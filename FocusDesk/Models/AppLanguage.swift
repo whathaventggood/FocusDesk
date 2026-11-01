@@ -416,7 +416,28 @@ enum AppLanguage: String, CaseIterable {
         "今日已完成，点击撤销": "Completed today; click to undo",
         "标记今日完成": "Mark complete today",
         " 和 ": " and ",
-        "已暂停，%@": "Paused, %@"
+        "已暂停，%@": "Paused, %@",
+        "快捷预设": "Quick presets",
+        "全屏沉浸": "Full-screen immersive",
+        "覆盖范围": "Coverage",
+        "百分比表示扩散最终可达的屏幕面积；100% 可传播到四角。": "Coverage is the screen area the wave can reach; 100% reaches every corner.",
+        "精细调整": "Fine adjustments",
+        "视觉浓度": "Visual opacity",
+        "持续时间（秒）": "Duration (seconds)",
+        "扩散速度": "Expansion speed",
+        "波次数量": "Wave count",
+        "粒子密度": "Particle density",
+        "无": "None",
+        "少": "Low",
+        "中": "Medium",
+        "多": "High",
+        "边缘余光（秒）": "Edge glow (seconds)",
+        "背景压暗": "Background dimming",
+        "所有显示器": "All monitors",
+        "默认仅方块所在屏幕。余光包含在总时长内，最长占总时长的 40%。": "By default, only the square’s monitor. Edge glow is included in the total duration, up to 40% of it.",
+        "停止特效": "Stop effect",
+        "特效从方块扩散，鼠标可穿透、不抢焦点、无声。可在设置或菜单停止；系统减少动态效果时保留静态提醒。": "Effects expand from the square, pass clicks through, preserve focus, and stay silent. Stop from Settings or the menu. Reduced motion keeps the static reminder.",
+        "粒子密度：0 无 / 1 少 / 2 中 / 3 多": "Particle density: 0 None / 1 Low / 2 Medium / 3 High"
     ]
 }
 

@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = v3.0.0
+          test "$GITHUB_REF_NAME" = v3.1.0
           test "$(find release -name '*.zip' | wc -l)" -eq 4
           (cd release && sha256sum *.zip > SHA256SUMS.txt)
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "FocusDesk 3.0.0 · macOS & Windows · 中文 / English" --notes-file docs/RELEASE-3.0.0.md release/*.zip release/SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "FocusDesk 3.1.0 · macOS & Windows · 中文 / English" --notes-file docs/RELEASE-3.1.0.md release/*.zip release/SHA256SUMS.txt

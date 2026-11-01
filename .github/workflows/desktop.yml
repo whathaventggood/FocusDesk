@@ -17,6 +17,13 @@ jobs:
         run: python3 scripts/localization/generate.py && git diff --exit-code FocusDesk/Models/AppLanguage.swift shared/
       - name: XCTest
         run: bash scripts/test-xcode.sh
+      - name: Native window and effect checks
+        run: bash scripts/check-native.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-screenshots
+          path: build/native-smoke/*.png
       - name: Package Chinese and English editions
         run: |
           mkdir -p build/desktop-release
@@ -25,7 +32,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :FocusDeskDefaultLanguage $language" build/Release/FocusDesk.app/Contents/Info.plist
             codesign --force --sign - build/Release/FocusDesk.app
             codesign --verify --deep --strict build/Release/FocusDesk.app
-            ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl build/Release/FocusDesk.app "build/desktop-release/FocusDesk-3.0.0-macos-arm64-$language.zip"
+            ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl build/Release/FocusDesk.app "build/desktop-release/FocusDesk-3.1.0-macos-arm64-$language.zip"
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +69,7 @@ jobs:
           New-Item -ItemType Directory -Force build/desktop-release | Out-Null
           foreach ($language in @('zh-Hans','en')) {
             Set-Content build/windows-publish/default-language.txt $language -Encoding utf8NoBOM
-            Compress-Archive -Path build/windows-publish/* -DestinationPath "build/desktop-release/FocusDesk-3.0.0-windows-x64-$language.zip"
+            Compress-Archive -Path build/windows-publish/* -DestinationPath "build/desktop-release/FocusDesk-3.1.0-windows-x64-$language.zip"
           }
       - uses: actions/upload-artifact@v4
         with:

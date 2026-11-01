@@ -57,11 +57,18 @@ final class PlanStore: ObservableObject {
         didSet { defaults.set(countdownEffect.rawValue, forKey: "appearance.effect") }
     }
     @Published var effectIntensity: EffectIntensity = .standard {
-        didSet { defaults.set(effectIntensity.rawValue, forKey: "appearance.intensity") }
+        didSet {
+            defaults.set(effectIntensity.rawValue, forKey: "appearance.intensity")
+            effectConfiguration = effectIntensity.configuration
+        }
     }
     @Published var effectsEnabled = true {
         didSet { defaults.set(effectsEnabled, forKey: "appearance.effectsEnabled") }
     }
+    @Published var effectConfiguration = EffectConfiguration() {
+        didSet { if let data = try? JSONEncoder().encode(effectConfiguration.normalized) { defaults.set(data, forKey: "appearance.screenEffect") } }
+    }
+    var onStopEffect: (() -> Void)?
     var onPreviewEffect: (() -> Void)?
 
     var onShowPlan: (() -> Void)?
@@ -99,7 +106,10 @@ final class PlanStore: ObservableObject {
         self.defaults = defaults
         theme = DeskTheme(rawValue: defaults.object(forKey: "appearance.theme") as? String ?? "") ?? .classic
         countdownEffect = CountdownEffect(rawValue: defaults.object(forKey: "appearance.effect") as? String ?? "") ?? .soft
-        effectIntensity = EffectIntensity(rawValue: defaults.object(forKey: "appearance.intensity") as? String ?? "") ?? .standard
+        let initialIntensity = EffectIntensity(rawValue: defaults.object(forKey: "appearance.intensity") as? String ?? "") ?? .standard
+        effectIntensity = initialIntensity
+        effectConfiguration = (defaults.object(forKey: "appearance.screenEffect") as? Data)
+            .flatMap { try? JSONDecoder().decode(EffectConfiguration.self, from: $0) }?.normalized ?? initialIntensity.configuration
         effectsEnabled = defaults.object(forKey: "appearance.effectsEnabled") as? Bool ?? true
         self.allowsLoginItemChanges = allowsLoginItemChanges
         self.nowProvider = nowProvider

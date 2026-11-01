@@ -8,12 +8,12 @@ A local-first focus companion for **macOS and Windows**. Keep a small desktop sq
 
 ## Downloads
 
-Version 3.0.0 has four packages. Both language editions contain the same features and allow switching between English and Simplified Chinese in Settings. The package language only sets the initial default; existing preferences and user content are preserved.
+Version 3.1.0 has four packages. Both language editions contain the same features and allow switching between English and Simplified Chinese in Settings. The package language only sets the initial default; existing preferences and user content are preserved.
 
 | System | English default | Simplified Chinese default |
 |---|---|---|
-| macOS 13+, Apple Silicon | `FocusDesk-3.0.0-macos-arm64-en.zip` | `FocusDesk-3.0.0-macos-arm64-zh-Hans.zip` |
-| Windows 10/11, x64 | `FocusDesk-3.0.0-windows-x64-en.zip` | `FocusDesk-3.0.0-windows-x64-zh-Hans.zip` |
+| macOS 13+, Apple Silicon | `FocusDesk-3.1.0-macos-arm64-en.zip` | `FocusDesk-3.1.0-macos-arm64-zh-Hans.zip` |
+| Windows 10/11, x64 | `FocusDesk-3.1.0-windows-x64-en.zip` | `FocusDesk-3.1.0-windows-x64-zh-Hans.zip` |
 
 Check the actual release assets and test results. On Windows, extract the entire archive and launch `FocusDesk.exe`; the .NET runtime is included. Keep all accompanying files together. On Mac, extract and move `FocusDesk.app` into Applications. Quit the previous version and back up local data before upgrading.
 
@@ -43,7 +43,7 @@ Images are rendered from the actual applications. Browse [all screenshots](docs/
 | Named activities, stopwatch, countdown, pause and resume | Yes | Yes |
 | Persistent completion state, finish, five more minutes, restart recovery | Yes | Yes |
 | Activity totals, date ranges, sorting, selected-activity sums | Yes | Yes |
-| 11 palettes, 10 completion effects, three intensities, preview | Yes | Yes |
+| 11 palettes, 10 effects, screen coverage, fine controls, preview | Yes | Yes |
 | English and Simplified Chinese UI, examples, and quotes | Yes | Yes |
 | System entry point | Menu bar, ⌘1/2/3 | System tray |
 | Task drafts and detailed inline replacement preview | Yes | Dialog editing and replacement confirmation |
@@ -58,10 +58,18 @@ Language changes translate the interface, not personal task or activity names. I
 - **Desktop:** the square defaults to 56 points and supports 32–112. Hover to expand; leave both panels to collapse. Drag to move, or use the bottom-right handle to resize. Hover does not take keyboard focus.
 - **Daily plan:** use `HH:mm` in 24-hour time. An end of `00:00` or `24:00` means midnight. Split overnight tasks into two parts. Confirm conflicting replacements before saving; unaffected fragments are retained.
 - **Timers:** open Activity Timers from the menu bar or tray. Only one timer can remain active. Completion is silent and keeps a pending reminder until you finish or extend it. Finish returns the desktop to the daily plan.
-- **Appearance:** select any theme and effect independently. Choose Gentle, Standard, or Dramatic intensity; preview or disable animations. Effects pass clicks through, preserve focus, and respect system reduced-animation settings. Native rendering differs slightly by platform.
+- **Appearance:** select any theme and effect independently. Choose Gentle (15%), Standard (50%), Dramatic (85%), or Full-screen immersive (100%). Adjust coverage from 10–100%, opacity, 1–12 second total duration, expansion speed, 1–3 waves, particle density, edge glow, and background dimming independently. Preview at actual desktop size; use Stop effect in Settings or the tray/menu bar to dismiss immediately. All monitors is optional and off by default. Effects pass clicks through, preserve focus, and respect system reduced-animation settings. Native rendering differs slightly by platform.
 - **Language:** use `Language / 语言` in Settings. Dates follow the interface locale and local clock.
 - **History:** completion rate is manually completed tasks divided by all planned tasks, including breaks. Time passing never marks tasks complete. Unrecorded dates are not invented.
 - **Quit:** closing management windows leaves the app running. Quit from the menu bar or system tray.
+
+## Screen effects in 3.1
+
+![Actual effect renderer at 85% coverage](docs/screenshots/screen-effect-85.png)
+
+Coverage measures the screen area reached by the expanding circle at its largest extent, including when the square sits in a corner. It does not mean that percentage of the screen is opaque. The animation has a brief origin glow, broad expanding bands with theme-specific particles, and an optional edge-light finish. Edge glow is part of the total duration and capped at 40% of it. Turning effects off immediately stops an active animation. The default target is the square’s monitor; All monitors adds a separate overlay to each display, starting from the nearest point to the square on other displays. No screen recording permission is needed.
+
+The same controls and presets are available on both systems. Existing intensity choices migrate to the corresponding new presets; manual adjustments persist. Effects stay silent, pass clicks through, and honor reduced motion. Desktop effects may be limited by OS-protected screens or exclusive full-screen applications. Mixed-DPI and multi-monitor placement still need testing on more physical setups.
 
 ## Local data and privacy
 

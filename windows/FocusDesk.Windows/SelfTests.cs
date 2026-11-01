@@ -19,6 +19,19 @@ public static class SelfTests {
             Check(reload.DeleteActivity(id)&&reload.State.Sessions.Count==0,"Delete removes activity history");
             File.WriteAllText(reload.FilePath,"broken");var damaged=new Store(directory,"en");Check(damaged.Blocked&&!damaged.AddActivity("Blocked")&&File.ReadAllText(reload.FilePath)=="broken","Corruption protection");Check(Directory.GetFiles(directory,"*.corrupt-*").Length==1,"Corruption backup");
             Language="en";Check(L("已到时")=="Time's up","English translation");Check(L("%@，%@","用户名称","done")=="用户名称, done","User text unchanged");
+            foreach(var size in new[]{new System.Windows.Size(1920,1080),new System.Windows.Size(3440,1440),new System.Windows.Size(900,1600)})
+                foreach(var origin in new[]{new System.Windows.Point(0,0),new System.Windows.Point(size.Width/2,size.Height/2),new System.Windows.Point(size.Width-20,10)})
+                    foreach(var coverage in new[]{.1,.5,.75,.85,1.0}){
+                        double radius=EffectGeometry.Radius(size,origin,coverage),ratio=EffectGeometry.Area(size,origin,radius)/(size.Width*size.Height);
+                        Check(Math.Abs(ratio-coverage)<.003,"Coverage reaches requested screen area");
+                    }
+            var old=System.Text.Json.JsonSerializer.Deserialize<Preferences>("{\"intensity\":2}",Resources.Json)!;
+            Check(old.EffectOptions.Coverage==.85,"Old dramatic preset migration");
+            var custom=EffectConfiguration.Preset(3);custom.Coverage=.72;custom.AllScreens=true;
+            var roundTrip=System.Text.Json.JsonSerializer.Deserialize<EffectConfiguration>(System.Text.Json.JsonSerializer.Serialize(custom,Resources.Json),Resources.Json)!;
+            Check(roundTrip.Coverage==.72&&roundTrip.AllScreens&&roundTrip.Waves==3,"Fine settings round trip");
+            var bounded=new EffectConfiguration{Coverage=double.NaN,Duration=50,Waves=8,Dim=-1}.Normalized();
+            Check(bounded.Coverage==.5&&bounded.Duration==12&&bounded.Waves==3&&bounded.Dim==0,"Effect bounds");
             Check(Desktop.Themes.Length==11&&Desktop.EffectIds.Length==10,"Desktop feature parity");Console.WriteLine($"PASS: {checks} Windows core checks");return 0;
         }catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{try{Directory.Delete(directory,true);}catch{}}
     }

@@ -518,8 +518,26 @@ private enum NativeSmoke {
             try writePreview(detail, to: output.appendingPathComponent("theme-\(theme.rawValue).png"))
             try writePreview(compact, to: output.appendingPathComponent("square-\(theme.rawValue).png"))
         }
+        // Coverage means the circle/screen intersection, including corners and ultrawide screens.
+        for size in [CGSize(width: 1920, height: 1080), CGSize(width: 3440, height: 1440), CGSize(width: 900, height: 1600)] {
+            for origin in [CGPoint.zero, CGPoint(x: size.width/2, y: size.height/2), CGPoint(x: size.width-20, y: 10)] {
+                for coverage in [0.1, 0.5, 0.75, 0.85, 1.0] {
+                    let radius = EffectGeometry.radius(size: size, origin: origin, coverage: coverage)
+                    let ratio = EffectGeometry.area(size: size, origin: origin, radius: radius)/(size.width*size.height)
+                    try require(abs(ratio-coverage) < 0.003, "Coverage must match reachable screen area")
+                }
+            }
+        }
+        var invalid = EffectConfiguration(); invalid.coverage = .infinity; invalid.duration = 99; invalid.dim = -1; invalid.waves = 40
+        try require(invalid.normalized.coverage == 0.5 && invalid.normalized.duration == 12 && invalid.normalized.dim == 0 && invalid.normalized.waves == 3, "Invalid effect values must be bounded")
+        let migrationDefaults = SmokeDefaults(); migrationDefaults.set("dramatic", forKey: "appearance.intensity")
+        let migrated = PlanStore(storageDirectory: output.appendingPathComponent("effect-migration"), defaults: migrationDefaults, allowsLoginItemChanges: false, startClock: false)
+        defer { migrated.stop() }
+        try require(migrated.effectConfiguration.coverage == 0.85, "Old dramatic intensity must migrate to a large-area preset")
         controller.store.theme = .cyber
         controller.store.effectIntensity = .dramatic
+        controller.store.effectConfiguration.speed = 1.3
+        let customConfiguration = controller.store.effectConfiguration
         for effect in CountdownEffect.allCases {
             controller.store.countdownEffect = effect
             let previousKey = NSApp.keyWindow
@@ -528,16 +546,43 @@ private enum NativeSmoke {
             if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 let overlay = NSApp.windows.first { $0.title == "FocusDesk 到时特效" && $0.isVisible }
                 try require(overlay != nil && overlay!.ignoresMouseEvents && !overlay!.canBecomeKey, "Effects must pass clicks through and never accept focus")
+                let screenFrame = compact.screen!.frame
+                try require(overlay!.frame == screenFrame, "Overlay must use the physical screen frame")
+                try require(controller.effectPanels.count == 1, "Default effect must stay on the square's screen")
                 try require(NSApp.keyWindow === previousKey, "Effect preview must preserve keyboard focus")
                 try writePreview(overlay!, to: output.appendingPathComponent("effect-\(effect.rawValue).png"))
             }
         }
-        pumpEvents(for: 4.2)
+        pumpEvents(for: 5.2)
         try require(!NSApp.windows.contains { $0.title == "FocusDesk 到时特效" && $0.isVisible }, "Effect window must disappear after playback")
+        controller.store.effectConfiguration.allScreens = true
+        controller.playCountdownEffect(preview: true)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            try require(controller.effectPanels.count == NSScreen.screens.count, "All-monitor mode needs one overlay per screen")
+        }
+        controller.stopCountdownEffect()
+        try require(controller.effectPanels.isEmpty, "Stop must release all canvases")
+        controller.store.effectConfiguration = customConfiguration
+        controller.playCountdownEffect(preview: true)
         controller.store.effectsEnabled = false
+        pumpEvents(for: 0.1)
+        try require(controller.effectPanels.isEmpty, "Disabling must stop the current playback")
         controller.playCountdownEffect(preview: true)
         try require(!NSApp.windows.contains { $0.title == "FocusDesk 到时特效" && $0.isVisible }, "Disabled effects must not create a visible overlay")
         controller.store.effectsEnabled = true
+        for coverage in [0.5, 0.85, 1.0] {
+            var config = EffectIntensity.dramatic.configuration; config.coverage = coverage
+            let size = CGSize(width: 1280, height: 720), origin = CGPoint(x: 154, y: 130)
+            let radius = EffectGeometry.radius(size: size, origin: origin, coverage: coverage)
+            let snapshot = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            snapshot.isReleasedWhenClosed = false
+            snapshot.contentView = NSHostingView(rootView: Canvas { context, canvasSize in
+                CountdownEffectView.draw(context: &context, size: canvasSize, theme: .cyber, effect: .energy,
+                                         configuration: config, origin: origin, radius: radius, elapsed: 1.7)
+            }.frame(width: size.width, height: size.height))
+            try writePreview(snapshot, to: output.appendingPathComponent("screen-effect-\(Int(coverage*100)).png"))
+            snapshot.close()
+        }
         controller.store.theme = .vintage
         controller.showSettings()
         try writePreview(settings[0], to: output.appendingPathComponent("theme-settings.png"))
@@ -545,6 +590,7 @@ private enum NativeSmoke {
         let appearanceReload = PlanStore(storageDirectory: controller.store.storageURL.deletingLastPathComponent(),
                                          defaults: controller.store.defaults, allowsLoginItemChanges: false, startClock: false)
         defer { appearanceReload.stop() }
+        try require(appearanceReload.effectConfiguration == customConfiguration, "Advanced custom settings must survive reload")
         try require(appearanceReload.theme == .vintage && appearanceReload.countdownEffect == .pixels && appearanceReload.effectIntensity == .dramatic, "Theme and effect choices must survive reload")
         try require(try Data(contentsOf: controller.store.storageURL.deletingLastPathComponent().appendingPathComponent("timers.json")) == timerFileBeforeThemes, "Appearance changes and previews must not alter timer records")
         controller.store.defaults.set("unknown-theme", forKey: "appearance.theme")

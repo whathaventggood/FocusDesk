@@ -34,7 +34,7 @@ public sealed class Desktop {
     public static readonly string[] EffectTitles={"柔和光晕","赛博故障","能量爆发","黑洞坍缩","全息解构","冰封碎裂","机械仪表","幽影侵蚀","花开与流萤","像素通关"};
     readonly Store store; readonly Window square,details; readonly DispatcherTimer clock=new(),hide=new();
     readonly Forms.NotifyIcon tray=new(); readonly Dictionary<string,Window> windows=new(); readonly List<TextBlock> clocks=new();
-    readonly bool smoke; Window? effectWindow; DispatcherTimer? animation; DateTimeOffset quoteHour; bool rendering;
+    readonly bool smoke; readonly List<Window> effectWindows=new(); Window? effectWindow=>effectWindows.FirstOrDefault(); DispatcherTimer? animation; DateTimeOffset quoteHour; bool rendering;
     public Palette Theme=>Themes.FirstOrDefault(x=>x.Id==store.State.Preferences.Theme)??Themes[0];
     Brush Accent=>Brush(Theme.Accent); Brush Foreground=>Brush(Theme.Dark?"#EEEFF3":"#292A30"); Brush Background=>Brush(Theme.Background);
     public static Brush Brush(string color)=>new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
@@ -72,10 +72,10 @@ public sealed class Desktop {
         var menu=new Forms.ContextMenuStrip();
         void Item(string key,Action action)=>menu.Items.Add(L(key),null,(_,_)=>Application.Current.Dispatcher.Invoke(()=>Guard(action)));
         Item(square.IsVisible?"隐藏小方块":"显示小方块",()=>{if(square.IsVisible){square.Hide();details.Hide();}else square.Show();BuildTray();});
-        Item("今日计划",()=>Open("plan"));Item("事项计时",()=>Open("timers"));Item("专注记录",()=>Open("history"));Item("设置",()=>Open("settings"));Item("退出 FocusDesk",()=>Application.Current.Shutdown());
+        Item("今日计划",()=>Open("plan"));Item("事项计时",()=>Open("timers"));Item("专注记录",()=>Open("history"));Item("设置",()=>Open("settings"));Item("停止特效",StopEffect);Item("退出 FocusDesk",()=>Application.Current.Shutdown());
         tray.ContextMenuStrip?.Dispose();tray.ContextMenuStrip=menu;
     }
-    void Refresh(){if(rendering)return;rendering=true;try{square.Topmost=details.Topmost=store.State.Preferences.OnTop;square.Width=square.Height=store.State.Preferences.Size;RenderSquare();if(details.IsVisible)RenderDetails();foreach(var pair in windows.ToArray())BuildPage(pair.Key,pair.Value);BuildTray();}finally{rendering=false;}}
+    void Refresh(){if(rendering)return;rendering=true;try{if(!store.State.Preferences.Effects)StopEffect();square.Topmost=details.Topmost=store.State.Preferences.OnTop;square.Width=square.Height=store.State.Preferences.Size;RenderSquare();if(details.IsVisible)RenderDetails();foreach(var pair in windows.ToArray())BuildPage(pair.Key,pair.Value);BuildTray();}finally{rendering=false;}}
     TaskItem? Current=>store.State.Tasks.FirstOrDefault(t=>t.StartMinutes<=DateTime.Now.TimeOfDay.TotalMinutes&&t.EndMinutes>DateTime.Now.TimeOfDay.TotalMinutes);
     string TimerText(){var s=store.State.Displayed;if(s==null)return "";return s.EndedAt!=null?L("已到时"):Clock(s.Target!=null?s.Remaining(DateTimeOffset.Now):s.Elapsed(DateTimeOffset.Now));}
     string ActivityName(Session s)=>store.State.Activities.FirstOrDefault(a=>a.Id==s.ActivityId)?.Name??L("事项");
@@ -136,32 +136,77 @@ if(store.Commit(d=>{d.Tasks.RemoveAll(x=>x.Id==updated.Id);foreach(var overlap i
     void SettingsPage(StackPanel box){box.Children.Add(Text(Resources.Language=="en"?"Language":"Language / 语言",15));var language=new ComboBox{ItemsSource=new[]{"简体中文","English"},SelectedIndex=Resources.Language=="en"?1:0};language.SelectionChanged+=(_,_)=>store.Commit(d=>d.Preferences.Language=language.SelectedIndex==1?"en":"zh-Hans");box.Children.Add(language);
         box.Children.Add(Text(L("主题"),16));var themes=new ComboBox{ItemsSource=Themes.Select(t=>L(t.Title)).ToArray(),SelectedIndex=Array.IndexOf(Themes,Theme)};themes.SelectionChanged+=(_,_)=>store.Commit(d=>d.Preferences.Theme=Themes[themes.SelectedIndex].Id);box.Children.Add(themes);
         box.Children.Add(Text(L("特效"),16));var effects=new ComboBox{ItemsSource=EffectTitles.Select(x=>L(x)).ToArray(),SelectedIndex=Math.Max(0,Array.IndexOf(EffectIds,store.State.Preferences.Effect))};effects.SelectionChanged+=(_,_)=>store.Commit(d=>d.Preferences.Effect=EffectIds[effects.SelectedIndex]);box.Children.Add(effects);
-        var intensity=new ComboBox{ItemsSource=new[]{L("轻柔"),L("标准"),L("夸张")},SelectedIndex=store.State.Preferences.Intensity,Margin=new Thickness(0,10,0,10)};intensity.SelectionChanged+=(_,_)=>store.Commit(d=>d.Preferences.Intensity=intensity.SelectedIndex);box.Children.Add(intensity);
+        box.Children.Add(Text(L("快捷预设"),14));
+        var presets=new WrapPanel();
+        foreach(var index in new[]{0,1,2,3}) { int choice=index;presets.Children.Add(Button(new[]{"轻柔","标准","夸张","全屏沉浸"}[index],()=>store.Commit(d=>{d.Preferences.Intensity=choice;d.Preferences.ScreenEffect=EffectConfiguration.Preset(choice);}))); }box.Children.Add(presets);
+        var options=store.State.Preferences.EffectOptions;
+        void EffectSlider(StackPanel parent,string title,double value,double min,double max,double step,bool percent,Action<EffectConfiguration,double> apply){
+            var label=Text(L(title)+" · "+(percent?(value*100).ToString("F0")+"%":value.ToString("F1")),14);parent.Children.Add(label);
+            var slider=new Slider{Minimum=min,Maximum=max,Value=value,TickFrequency=step,IsSnapToTickEnabled=true,Margin=new Thickness(0,3,0,10)};
+            slider.ValueChanged+=(_,_)=>label.Text=L(title)+" · "+(percent?(slider.Value*100).ToString("F0")+"%":slider.Value.ToString("F1"));
+            void Save()=>store.Commit(d=>{d.Preferences.ScreenEffect??=d.Preferences.EffectOptions;apply(d.Preferences.ScreenEffect,slider.Value);});
+            slider.PreviewMouseLeftButtonUp+=(_,_)=>Save();slider.PreviewKeyUp+=(_,_)=>Save();parent.Children.Add(slider);
+        }
+        EffectSlider(box,"覆盖范围",options.Coverage,.1,1,.01,true,(c,v)=>c.Coverage=v);
+        box.Children.Add(Text(L("百分比表示扩散最终可达的屏幕面积；100% 可传播到四角。"),12));
+        var advanced=new StackPanel{Margin=new Thickness(8)};
+        EffectSlider(advanced,"视觉浓度",options.Opacity,.1,1,.01,true,(c,v)=>c.Opacity=v);
+        EffectSlider(advanced,"持续时间（秒）",options.Duration,1,12,.5,false,(c,v)=>c.Duration=v);
+        EffectSlider(advanced,"扩散速度",options.Speed,.6,1.6,.1,false,(c,v)=>c.Speed=v);
+        EffectSlider(advanced,"波次数量",options.Waves,1,3,1,false,(c,v)=>c.Waves=(int)v);
+        EffectSlider(advanced,"粒子密度",options.Density,0,3,1,false,(c,v)=>c.Density=(int)v);
+        advanced.Children.Add(Text(L("粒子密度：0 无 / 1 少 / 2 中 / 3 多"),12));
+        EffectSlider(advanced,"边缘余光（秒）",options.EdgeGlow,0,6,.5,false,(c,v)=>c.EdgeGlow=v);
+        EffectSlider(advanced,"背景压暗",options.Dim,0,.3,.01,true,(c,v)=>c.Dim=v);
+        var monitors=new CheckBox{Content=L("所有显示器"),IsChecked=options.AllScreens,Foreground=Foreground};monitors.Click+=(_,_)=>store.Commit(d=>{d.Preferences.ScreenEffect??=d.Preferences.EffectOptions;d.Preferences.ScreenEffect.AllScreens=monitors.IsChecked==true;});advanced.Children.Add(monitors);
+        advanced.Children.Add(Text(L("默认仅方块所在屏幕。余光包含在总时长内，最长占总时长的 40%。"),12));
+        box.Children.Add(new Expander{Header=L("精细调整"),Content=advanced,Foreground=Foreground,Margin=new Thickness(0,8,0,8)});
         void Toggle(string title,bool value,Action<Preferences,bool> change){var check=new CheckBox{Content=L(title),IsChecked=value,Foreground=Foreground,Margin=new Thickness(0,10,0,10)};check.Click+=(_,_)=>store.Commit(d=>change(d.Preferences,check.IsChecked==true));box.Children.Add(check);}
-        Toggle("启用到时特效",store.State.Preferences.Effects,(p,v)=>p.Effects=v);box.Children.Add(Button("预览桌面特效",()=>PlayEffect()));Toggle("小方块与悬浮窗始终置顶",store.State.Preferences.OnTop,(p,v)=>p.OnTop=v);
+        Toggle("启用到时特效",store.State.Preferences.Effects,(p,v)=>p.Effects=v);box.Children.Add(Button("预览桌面特效",()=>PlayEffect(true)));box.Children.Add(Button("停止特效",StopEffect));
+        box.Children.Add(Text(L("特效从方块扩散，鼠标可穿透、不抢焦点、无声。可在设置或菜单停止；系统减少动态效果时保留静态提醒。"),12));
+        Toggle("小方块与悬浮窗始终置顶",store.State.Preferences.OnTop,(p,v)=>p.OnTop=v);
         box.Children.Add(Text(L("桌面小方块大小"),16));var size=new Slider{Minimum=32,Maximum=112,Value=store.State.Preferences.Size,TickFrequency=1,IsSnapToTickEnabled=true};size.PreviewMouseLeftButtonUp+=(_,_)=>store.Commit(d=>d.Preferences.Size=size.Value);box.Children.Add(size);
         var startup=new CheckBox{Content=L("登录 macOS 时启动").Replace("macOS","Windows"),Foreground=Foreground,Margin=new Thickness(0,14,0,14)};if(!smoke){using var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");startup.IsChecked=key?.GetValue("FocusDesk")!=null;}startup.Click+=(_,_)=>Guard(()=>{if(smoke)return;using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(startup.IsChecked==true)key.SetValue("FocusDesk","\""+Environment.ProcessPath+"\"");else key.DeleteValue("FocusDesk",false);});box.Children.Add(startup);box.Children.Add(Text(L("计划与设置仅保存在本机"),14));box.Children.Add(Text(store.FilePath,12));}
-    public void PlayEffect(){if(!store.State.Preferences.Effects||!SystemParameters.ClientAreaAnimation||!square.IsVisible)return;animation?.Stop();effectWindow?.Close();effectWindow=Panel("FocusDesk Effect",360,360);effectWindow.Left=square.Left+square.Width/2-180;effectWindow.Top=square.Top+square.Height/2-180;var surface=new EffectSurface(store.State.Preferences.Effect,Accent,store.State.Preferences.Intensity);effectWindow.Content=surface;effectWindow.SourceInitialized+=(_,_)=>{var h=new WindowInteropHelper(effectWindow).Handle;SetWindowLong(h,-20,GetWindowLong(h,-20)|0x20);};effectWindow.Show();var start=DateTime.UtcNow;double duration=new[]{1.8,2.8,4.0}[store.State.Preferences.Intensity];animation=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(16)};animation.Tick+=(_,_)=>{surface.Progress=(DateTime.UtcNow-start).TotalSeconds/duration;if(surface.Progress>=1){animation.Stop();effectWindow.Close();effectWindow=null;}};animation.Start();}
-    public void Dispose(){clock.Stop();hide.Stop();animation?.Stop();tray.Dispose();}
-    public void Screenshots(string directory){Directory.CreateDirectory(directory);foreach(var lang in new[]{"zh-Hans","en"}){Resources.Language=lang;store.Commit(d=>{d.Preferences.Language=lang;d.Tasks=Resources.Read<List<TaskItem>>("default-plan.json");foreach(var task in d.Tasks){task.Title=L(task.Title);task.Details=L(task.Details);}foreach(var activity in d.Activities)activity.Name=L("运动");});foreach(var key in new[]{"plan","timers","settings","history"}){Open(key);Capture(windows[key],System.IO.Path.Combine(directory,$"windows-{key}-{lang}.png"));windows[key].Hide();}ShowDetails();Capture(details,System.IO.Path.Combine(directory,$"windows-floating-{lang}.png"));}foreach(var effect in EffectIds){store.Commit(d=>d.Preferences.Effect=effect);PlayEffect();if(SystemParameters.ClientAreaAnimation){if(effectWindow==null)throw new Exception("Effect window missing");int flags=GetWindowLong(new WindowInteropHelper(effectWindow).Handle,-20);if((flags&0x20)==0||(flags&0x08000000)==0)throw new Exception("Effect must pass clicks through and never activate");}}
-        if(SystemParameters.ClientAreaAnimation){var frame=new DispatcherFrame();var wait=new DispatcherTimer{Interval=TimeSpan.FromSeconds(4.2)};wait.Tick+=(_,_)=>{wait.Stop();frame.Continue=false;};wait.Start();Dispatcher.PushFrame(frame);if(effectWindow!=null)throw new Exception("Effect window did not clean up");}
-        store.Commit(d=>d.Preferences.Effects=false);PlayEffect();if(effectWindow!=null)throw new Exception("Disabled effect created a window");store.Commit(d=>d.Preferences.Effects=true);
+    [DllImport("user32.dll")]static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int width,int height,uint flags);
+    public void StopEffect(){animation?.Stop();animation=null;foreach(var window in effectWindows)window.Close();effectWindows.Clear();}
+    public void PlayEffect(bool preview=false){
+        StopEffect();
+        if(!store.State.Preferences.Effects||!SystemParameters.ClientAreaAnimation||(!preview&&!square.IsVisible))return;
+        var options=store.State.Preferences.EffectOptions.Normalized();
+        var anchor=square.PointToScreen(new Point(square.Width/2,square.Height/2));
+        var current=Forms.Screen.FromPoint(new System.Drawing.Point((int)anchor.X,(int)anchor.Y));
+        var surfaces=new List<EffectSurface>();
+        foreach(var monitor in options.AllScreens?Forms.Screen.AllScreens:new[]{current}){
+            var bounds=monitor.Bounds;
+            var origin=new Point(Math.Clamp((anchor.X-bounds.Left)/bounds.Width,0,1),Math.Clamp((anchor.Y-bounds.Top)/bounds.Height,0,1));
+            var window=Panel("FocusDesk Effect",bounds.Width,bounds.Height);window.Topmost=true;
+            var surface=new EffectSurface(store.State.Preferences.Effect,Accent,options,origin);window.Content=surface;
+            window.SourceInitialized+=(_,_)=>{var handle=new WindowInteropHelper(window).Handle;SetWindowLong(handle,-20,GetWindowLong(handle,-20)|0x20);};
+            window.Show();
+            // Screen bounds and anchor are physical pixels. Let WPF handle the target monitor's DPI.
+            SetWindowPos(new WindowInteropHelper(window).Handle,new IntPtr(-1),bounds.X,bounds.Y,bounds.Width,bounds.Height,0x10|0x40);
+            effectWindows.Add(window);surfaces.Add(surface);
+        }
+        var start=System.Diagnostics.Stopwatch.StartNew();animation=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(33)};
+        animation.Tick+=(_,_)=>{if(!SystemParameters.ClientAreaAnimation){StopEffect();return;}double elapsed=start.Elapsed.TotalSeconds;foreach(var surface in surfaces)surface.Elapsed=elapsed;if(elapsed>=options.Duration)StopEffect();};animation.Start();
+    }
+    public void Dispose(){clock.Stop();hide.Stop();StopEffect();tray.Dispose();}
+    public void Screenshots(string directory){Directory.CreateDirectory(directory);foreach(var lang in new[]{"zh-Hans","en"}){Resources.Language=lang;store.Commit(d=>{d.Preferences.Language=lang;d.Tasks=Resources.Read<List<TaskItem>>("default-plan.json");foreach(var task in d.Tasks){task.Title=L(task.Title);task.Details=L(task.Details);}foreach(var activity in d.Activities)activity.Name=L("运动");});foreach(var key in new[]{"plan","timers","settings","history"}){Open(key);Capture(windows[key],System.IO.Path.Combine(directory,$"windows-{key}-{lang}.png"));windows[key].Hide();}ShowDetails();Capture(details,System.IO.Path.Combine(directory,$"windows-floating-{lang}.png"));}foreach(var effect in EffectIds){store.Commit(d=>d.Preferences.Effect=effect);PlayEffect();if(SystemParameters.ClientAreaAnimation){if(effectWindow==null)throw new Exception("Effect window missing");effectWindow!.UpdateLayout();if(effectWindow.ActualWidth<600)throw new Exception("Effect area did not expand to the monitor");int flags=GetWindowLong(new WindowInteropHelper(effectWindow).Handle,-20);if((flags&0x20)==0||(flags&0x08000000)==0)throw new Exception("Effect must pass clicks through and never activate");}}
+        if(SystemParameters.ClientAreaAnimation){var frame=new DispatcherFrame();var wait=new DispatcherTimer{Interval=TimeSpan.FromSeconds(store.State.Preferences.EffectOptions.Duration+.3)};wait.Tick+=(_,_)=>{wait.Stop();frame.Continue=false;};wait.Start();Dispatcher.PushFrame(frame);if(effectWindow!=null)throw new Exception("Effect window did not clean up");}
+        store.Commit(d=>d.Preferences.ScreenEffect=new EffectConfiguration{AllScreens=true});PlayEffect(true);
+        if(SystemParameters.ClientAreaAnimation&&effectWindows.Count!=Forms.Screen.AllScreens.Length)throw new Exception("All-monitor overlay count");
+        StopEffect();if(effectWindows.Count!=0)throw new Exception("Stop did not release overlays");
+        PlayEffect(true);store.Commit(d=>d.Preferences.Effects=false);if(effectWindow!=null)throw new Exception("Disable must stop playback");PlayEffect();if(effectWindow!=null)throw new Exception("Disabled effect created a window");store.Commit(d=>d.Preferences.Effects=true);
+        foreach(var coverage in new[]{.5,.85,1.0}){
+            var preview=Panel("Effect rendering",1280,720);preview.Background=Background;
+            var config=EffectConfiguration.Preset(2);config.Coverage=coverage;
+            var surface=new EffectSurface("energy",Accent,config,new Point(.12,.18));preview.Content=surface;preview.Show();surface.Elapsed=1.7;
+            Capture(preview,System.IO.Path.Combine(directory,$"windows-effect-{(int)(coverage*100)}.png"));preview.Close();
+        }
         foreach(var theme in Themes){store.Commit(d=>d.Preferences.Theme=theme.Id);ShowDetails();Capture(details,System.IO.Path.Combine(directory,$"windows-theme-{theme.Id}.png"));}}
     public static void Capture(Window window,string file){window.UpdateLayout();Application.Current.Dispatcher.Invoke(()=>{},DispatcherPriority.Render);var view=(FrameworkElement)window.Content;view.UpdateLayout();var bitmap=new RenderTargetBitmap((int)Math.Ceiling(view.ActualWidth),(int)Math.Ceiling(view.ActualHeight),96,96,PixelFormats.Pbgra32);var backdrop=new DrawingVisual();using(var dc=backdrop.RenderOpen())dc.DrawRectangle(window.Background??System.Windows.Media.Brushes.White,null,new Rect(0,0,view.ActualWidth,view.ActualHeight));bitmap.Render(backdrop);bitmap.Render(view);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using var stream=File.Create(file);png.Save(stream);}
 }
 public sealed class ProgressRing:FrameworkElement {
     public double Progress;public Brush Stroke=System.Windows.Media.Brushes.Blue;
     protected override void OnRender(DrawingContext dc){base.OnRender(dc);double r=Math.Min(ActualWidth,ActualHeight)/2-2;var center=new Point(ActualWidth/2,ActualHeight/2);if(Progress>=1){dc.DrawEllipse(null,new Pen(Stroke,2.5),center,r,r);return;}if(Progress<=0)return;var geometry=new StreamGeometry();using(var c=geometry.Open()){c.BeginFigure(new Point(center.X,center.Y-r),false,false);double a=Progress*2*Math.PI;c.ArcTo(new Point(center.X+Math.Sin(a)*r,center.Y-Math.Cos(a)*r),new Size(r,r),0,Progress>.5,SweepDirection.Clockwise,true,false);}dc.DrawGeometry(null,new Pen(Stroke,2.5),geometry);}
-}
-public sealed class EffectSurface:FrameworkElement {
-    readonly string effect;readonly Brush accent;readonly int intensity;double progress;
-    public double Progress{get=>progress;set{progress=value;InvalidateVisual();}}
-    public EffectSurface(string style,Brush color,int strength){effect=style;accent=color;intensity=strength;IsHitTestVisible=false;}
-    protected override void OnRender(DrawingContext dc){double p=Math.Clamp(progress,0,1),fade=Math.Sin(p*Math.PI),radius=150*(.5+intensity*.25);var center=new Point(180,180);dc.PushOpacity(fade);
-        Point At(double a,double r)=>new(180+Math.Cos(a)*r,180+Math.Sin(a)*r);
-        if(effect is "soft" or "energy" or "mechanical"){for(int j=0;j<(effect=="soft"?1:3);j++){double r=22+radius*Math.Max(0,p-j*.13);dc.DrawEllipse(null,new Pen(accent,Math.Max(1,3-j)),center,r,r);if(effect=="mechanical")for(int k=0;k<24;k++)dc.DrawLine(new Pen(accent,2),At(k*Math.PI/12+p*3,r),At(k*Math.PI/12+p*3,r+7));}}
-        else if(effect=="glitch"){for(int j=0;j<12;j++)dc.DrawRectangle(j%2==0?System.Windows.Media.Brushes.Cyan:System.Windows.Media.Brushes.Magenta,null,new Rect(120+Math.Sin(p*18+j)*25,120+j*10,120,j%3==0?4:1));}
-        else {if(effect=="blackhole")dc.DrawEllipse(System.Windows.Media.Brushes.Black,new Pen(accent,3),center,20+fade*20,20+fade*20);for(int j=0;j<48;j++){double a=j*2.39996+(effect is "blackhole" or "shadow"?p*4:0);double r=20+radius*(effect=="blackhole"?1-p:p)*(.4+(j%7)/10.0);var point=At(a,r);double size=effect=="shadow"?18:effect=="ice"?8:5;var color=effect=="ice"?System.Windows.Media.Brushes.Cyan:effect=="pixels"?new[]{System.Windows.Media.Brushes.Yellow,System.Windows.Media.Brushes.Pink,System.Windows.Media.Brushes.MintCream}[j%3]:effect=="petals"?System.Windows.Media.Brushes.LightPink:effect=="shadow"?System.Windows.Media.Brushes.DarkRed:accent;if(effect is "pixels" or "hologram" or "ice")dc.DrawRectangle(effect=="hologram"?null:color,new Pen(color,1),new Rect(point,new Size(size,size)));else dc.DrawEllipse(color,null,point,size,effect=="petals"?size/2:size);}}
-        dc.Pop();
-    }
 }

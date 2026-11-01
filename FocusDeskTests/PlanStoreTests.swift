@@ -24,6 +24,37 @@ final class PlanStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScreenEffectMigrationAndCustomSettingsPersist() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let defaults = TestDefaults(); defaults.set("dramatic", forKey: "appearance.intensity")
+        let store = PlanStore(storageDirectory: directory, defaults: defaults, allowsLoginItemChanges: false, startClock: false)
+        defer { store.stop() }
+        XCTAssertEqual(store.effectConfiguration.coverage, 0.85)
+        store.effectConfiguration.coverage = 0.73
+        store.effectConfiguration.allScreens = true
+        store.effectConfiguration.duration = 8
+        let reload = PlanStore(storageDirectory: directory, defaults: defaults, allowsLoginItemChanges: false, startClock: false)
+        defer { reload.stop() }
+        XCTAssertEqual(reload.effectConfiguration, store.effectConfiguration)
+        store.effectIntensity = .immersive
+        XCTAssertEqual(store.effectConfiguration.coverage, 1)
+        XCTAssertEqual(store.effectConfiguration.waves, 3)
+        XCTAssertLessThanOrEqual(store.effectConfiguration.tail, store.effectConfiguration.duration * 0.4)
+    }
+
+    func testScreenEffectCoverageFromCornersAndUltrawideScreens() {
+        for size in [CGSize(width: 1920, height: 1080), CGSize(width: 3440, height: 1440)] {
+            for origin in [CGPoint.zero, CGPoint(x: size.width/2, y: size.height/2)] {
+                for coverage in [0.1, 0.5, 0.85, 1] {
+                    let radius = EffectGeometry.radius(size: size, origin: origin, coverage: coverage)
+                    XCTAssertEqual(EffectGeometry.area(size: size, origin: origin, radius: radius)/(size.width*size.height), coverage, accuracy: 0.003)
+                }
+            }
+        }
+    }
+
+    @MainActor
     func testActivityCountdownCompletesOnRestartAndPreservesPlan() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
