@@ -36,4 +36,4 @@ if [[ "${1:-}" == "--build-only" ]]; then
   exit 0
 fi
 
-exec build/native-smoke/FocusDeskSmoke.app/Contents/MacOS/FocusDeskSmoke
+exec build/native-smoke/FocusDeskSmoke.app/Contents/MacOS/FocusDeskSmoke "$@"

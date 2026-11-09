@@ -58,7 +58,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         return PlanStore(
             storageDirectory: storageDirectory,
             defaults: isSmokeTest ? SessionDefaults() : .standard,
-            allowsLoginItemChanges: !isSmokeTest
+            allowsLoginItemChanges: !isSmokeTest,
+            useBackgroundActivityIO: !isSmokeTest
         )
     }()
     private var panel: NSPanel?
@@ -110,7 +111,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             self?.planWindow?.title = L("今日计划 · FocusDesk")
             self?.settingsWindow?.title = L("设置 · FocusDesk")
             self?.timersWindow?.title = L("事项计时 · FocusDesk")
-            self?.historyWindow?.title = L("专注记录 · FocusDesk")
+            self?.historyWindow?.title = L("计划回顾 · FocusDesk")
             self?.createMainMenu()
             self?.statusItem?.menu = nil
             self?.createStatusItem()
@@ -164,6 +165,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             guard let self, self.effectGeneration == generation else { return }
             self.stopCountdownEffect()
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard store.needsActivityFlush else { return .terminateNow }
+        Task { @MainActor in
+            let saved = await store.prepareForTermination()
+            sender.reply(toApplicationShouldTerminate: saved)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -363,7 +373,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 contentRect: NSRect(x: 0, y: 0, width: 800, height: 700),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
             )
-            window.title = L("专注记录 · FocusDesk")
+            window.title = L("计划回顾 · FocusDesk")
             window.minSize = NSSize(width: 680, height: 540)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -380,11 +390,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     @objc func showTimers() {
         collapseDetails()
         if timersWindow == nil {
-            let window = NSWindow(
+            let window = ActivityWorkspaceWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 800, height: 760),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
             )
             window.title = L("事项计时 · FocusDesk")
+            window.activityStore = store
             window.minSize = NSSize(width: 700, height: 560)
             window.isReleasedWhenClosed = false
             window.isRestorable = false
@@ -527,7 +538,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         menu.addItem(.separator())
         visibilityMenuItem = addMenuItem(L("隐藏小方块"), action: #selector(toggleFloating), to: menu)
         addMenuItem(L("今日计划…"), action: #selector(showPlan), to: menu)
-        addMenuItem(L("专注记录…"), action: #selector(showHistory), to: menu)
+        addMenuItem(L("计划回顾…"), action: #selector(showHistory), to: menu)
         addMenuItem(L("事项计时…"), action: #selector(showTimers), to: menu)
         addMenuItem(L("停止特效"), action: #selector(stopCountdownEffect), to: menu)
         addMenuItem(L("设置…"), action: #selector(showSettings), to: menu)
@@ -554,7 +565,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "FocusDesk")
         addMenuItem(L("今日计划…"), action: #selector(showPlan), key: "1", to: appMenu)
-        addMenuItem(L("专注记录…"), action: #selector(showHistory), key: "2", to: appMenu)
+        addMenuItem(L("计划回顾…"), action: #selector(showHistory), key: "2", to: appMenu)
         addMenuItem(L("事项计时…"), action: #selector(showTimers), key: "3", to: appMenu)
         addMenuItem(L("设置…"), action: #selector(showSettings), key: ",", to: appMenu)
         appMenu.addItem(.separator())
@@ -566,8 +577,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let editItem = NSMenuItem()
         let editMenu = NSMenu(title: L("编辑"))
         for (title, action, key) in [
-            (L("撤销"), Selector(("undo:")), "z"),
-            (L("重做"), Selector(("redo:")), "Z"),
+            (L("撤销"), #selector(ActivityWorkspaceWindow.undo(_:)), "z"),
+            (L("重做"), #selector(ActivityWorkspaceWindow.redo(_:)), "Z"),
             (L("剪切"), #selector(NSText.cut(_:)), "x"),
             (L("复制"), #selector(NSText.copy(_:)), "c"),
             (L("粘贴"), #selector(NSText.paste(_:)), "v"),
@@ -578,5 +589,49 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         editItem.submenu = editMenu
         main.addItem(editItem)
         NSApp.mainMenu = main
+    }
+}
+/// The native field editor receives text undo first. Workspace changes are
+/// handled only when the responder chain reaches this window.
+@MainActor
+final class ActivityWorkspaceWindow: NSWindow {
+    weak var activityStore: PlanStore?
+
+    @objc func undo(_ sender: Any?) {
+        if let editor = firstResponder as? NSTextView {
+            if editor.undoManager?.canUndo == true { editor.undoManager?.undo() }
+            return
+        }
+        guard let activityStore, !activityStore.activityIsBusy else { return }
+        Task { await activityStore.undoActivityChange() }
+    }
+
+    @objc func redo(_ sender: Any?) {
+        if let editor = firstResponder as? NSTextView {
+            if editor.undoManager?.canRedo == true { editor.undoManager?.redo() }
+            return
+        }
+        guard let activityStore, !activityStore.activityIsBusy else { return }
+        Task { await activityStore.redoActivityChange() }
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(ActivityWorkspaceWindow.undo(_:)) {
+            if let editor = firstResponder as? NSTextView {
+                menuItem.title = L("撤销")
+                return editor.undoManager?.canUndo == true
+            }
+            menuItem.title = activityStore?.activityUndoTitle ?? L("撤销")
+            return activityStore?.activityUndoTitle != nil && activityStore?.activityIsBusy == false
+        }
+        if menuItem.action == #selector(ActivityWorkspaceWindow.redo(_:)) {
+            if let editor = firstResponder as? NSTextView {
+                menuItem.title = L("重做")
+                return editor.undoManager?.canRedo == true
+            }
+            menuItem.title = activityStore?.activityRedoTitle ?? L("重做")
+            return activityStore?.activityRedoTitle != nil && activityStore?.activityIsBusy == false
+        }
+        return super.validateMenuItem(menuItem)
     }
 }

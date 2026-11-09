@@ -1,0 +1,65 @@
+{
+  "date": "2026-11-09",
+  "scope": "Exploratory local benchmark of the current ActivityTimerStore.update rename path; no application code changes.",
+  "setup": {
+    "projects": 100,
+    "samples_per_record_count": 5,
+    "completed_segments_per_record": 1,
+    "optimization": "swiftc -O",
+    "storage": "isolated /private/tmp directory",
+    "clock": "fixed synthetic dates"
+  },
+  "limitations": [
+    "Five samples describe this local probe, not a P95 or cross-device result.",
+    "Different fixture and storage location from the previous two-segment/Desktop-related tests.",
+    "Measures read/change/validate/encode/atomic save together; does not measure end-to-end UI latency.",
+    "No normal user records were read or modified."
+  ],
+  "measurements": [
+    {
+      "file_bytes": 334845,
+      "projects": 100,
+      "records": 1000,
+      "rename_save_first_ms": 23.52691674605012,
+      "rename_save_max_ms": 23.52691674605012,
+      "rename_save_median_ms": 15.339875128120184,
+      "trials_ms": [
+        23.52691674605012,
+        18.042208161205053,
+        15.339875128120184,
+        14.213708229362965,
+        13.846874702721834
+      ]
+    },
+    {
+      "file_bytes": 3241845,
+      "projects": 100,
+      "records": 10000,
+      "rename_save_first_ms": 126.27108348533511,
+      "rename_save_max_ms": 126.27108348533511,
+      "rename_save_median_ms": 124.91583358496428,
+      "trials_ms": [
+        126.27108348533511,
+        125.91124977916479,
+        124.91583358496428,
+        124.74554125219584,
+        124.51970810070634
+      ]
+    },
+    {
+      "file_bytes": 32311845,
+      "projects": 100,
+      "records": 100000,
+      "rename_save_first_ms": 1305.5665413849056,
+      "rename_save_max_ms": 1305.5665413849056,
+      "rename_save_median_ms": 1278.061166871339,
+      "trials_ms": [
+        1305.5665413849056,
+        1300.4815415479243,
+        1278.061166871339,
+        1249.5639584958553,
+        1273.572042118758
+      ]
+    }
+  ]
+}

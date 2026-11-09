@@ -1,6 +1,6 @@
 # Desktop releases / 电脑端发布
 
-Current release line: **3.1.0**, Mac build **8**, Windows .NET version **3.1.0**.
+Published package documentation remains on **3.1.0**. The macOS workspace candidate is **3.2.0**, build **9**; Windows remains **3.1.0**. Verify per-platform scope before creating a public release.
 
 1. Run `python3 scripts/localization/generate.py`; commit both shared resources and generated Swift.
 2. Update the versions in `Info.plist`, the Xcode project, Windows csproj, package filenames in workflows, README, and changelog together.

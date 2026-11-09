@@ -6,6 +6,12 @@ A local-first focus companion for **macOS and Windows**. Keep a small desktop sq
 
 [Download a release](https://github.com/whathaventggood/FocusDesk/releases/latest) · [Changelog](CHANGELOG.md) · [Installation](docs/INSTALL.md) · [Release process](docs/RELEASING.md)
 
+## macOS 3.2 development candidate
+
+The current macOS workspace builds version 3.2.0 (build 9), with pinned day details, project search and focus, recent-project timer preferences, archive/restore, record notes, scoped undo/redo, and atomic timer switching. Study records and plan review have distinct meanings. Archiving preserves history. Timer data upgrades to version 2 after backing up the original file. Quit the older app before opening this build. This does not indicate a public release or Windows feature update.
+
+Local artifact: `build/Release/FocusDesk-3.2.0-build9.zip`. See the [3.2 validation report](docs/VALIDATION-3.2.md), [project search and focus](docs/screenshots/experience-50-project-search.png), and [study records](docs/screenshots/experience-records.png).
+
 ## Downloads
 
 Version 3.1.0 has four packages. Both language editions contain the same features and allow switching between English and Simplified Chinese in Settings. The package language only sets the initial default; existing preferences and user content are preserved.
@@ -49,7 +55,9 @@ Images are rendered from the actual applications. Browse [all screenshots](docs/
 | Task drafts and detailed inline replacement preview | Yes | Dialog editing and replacement confirmation |
 | History filters | 7 / 30 days and all time | 7 / 30 days and all time |
 
-Both apps use shared translations, initial plans, and quote resources from `shared/`. Timer rules are consistent: paused time is excluded, countdowns stop accumulating at their target, waiting after completion is excluded, and running timers recover elapsed time after sleep or exit. “+5 minutes” starts a new five-minute stretch at click time for the same activity.
+Both apps use shared translations, initial plans, and quote resources from `shared/`. Paused time and time waiting after completion are excluded; countdowns stop accumulating at their target. “+5 minutes” starts a new five-minute stretch at click time for the same activity. On macOS, closing the lid or system sleep saves a paused timer; resume it manually after waking. Windows still recovers elapsed time after sleep. Running timers continue across quitting and relaunching; pause before quitting to exclude that time.
+
+macOS also includes fixed project colors, duration bars, daily stacked charts, and duration corrections. Select projects to filter the trend and total. Use **Edit duration** beside a finished record to shorten a forgotten timer or restore its original duration. Original active segments are retained, and corrected time is attributed to the days when those segments occurred. **Add study record** lets you enter a missing session with a start time and duration. These new study-record features are currently macOS-only.
 
 Language changes translate the interface, not personal task or activity names. Initial example plans use the selected language when data is first created. Switching languages never rewrites an existing plan.
 
@@ -58,6 +66,7 @@ Language changes translate the interface, not personal task or activity names. I
 - **Desktop:** the square defaults to 56 points and supports 32–112. Hover to expand; leave both panels to collapse. Drag to move, or use the bottom-right handle to resize. Hover does not take keyboard focus.
 - **Daily plan:** use `HH:mm` in 24-hour time. An end of `00:00` or `24:00` means midnight. Split overnight tasks into two parts. Confirm conflicting replacements before saving; unaffected fragments are retained.
 - **Timers:** open Activity Timers from the menu bar or tray. Only one timer can remain active. Completion is silent and keeps a pending reminder until you finish or extend it. Finish returns the desktop to the daily plan.
+- **Mac study charts:** projects receive stable colors and unique numbers automatically, including newly added projects. Hover over a daily bar segment to see its full project name, date, and duration. Small segments omit their number but retain hover details. Numbers match the legend and project list, so similar colors remain distinguishable.
 - **Appearance:** select any theme and effect independently. Choose Gentle (15%), Standard (50%), Dramatic (85%), or Full-screen immersive (100%). Adjust coverage from 10–100%, opacity, 1–12 second total duration, expansion speed, 1–3 waves, particle density, edge glow, and background dimming independently. Preview at actual desktop size; use Stop effect in Settings or the tray/menu bar to dismiss immediately. All monitors is optional and off by default. Effects pass clicks through, preserve focus, and respect system reduced-animation settings. Native rendering differs slightly by platform.
 - **Language:** use `Language / 语言` in Settings. Dates follow the interface locale and local clock.
 - **History:** completion rate is manually completed tasks divided by all planned tasks, including breaks. Time passing never marks tasks complete. Unrecorded dates are not invented.
@@ -93,6 +102,8 @@ FOCUSDESK_DEFAULT_LANGUAGE=en ./scripts/build-app.sh Release
 ```
 
 With Command Line Tools only, `scripts/check-core.sh`, `scripts/check-native.sh`, and `scripts/build-app.sh` provide supplemental checks and builds, not XCTest. Native checks use isolated data and save screenshots in `build/native-smoke/`.
+
+`bash scripts/check-performance.sh` compares statistics for 100 projects and 10,000 records, including pauses, corrections, day boundaries, time zones, and DST. It saves machine-specific timings in `build/ux-validation/performance.json`; add `--stress` for 100,000 records and `performance-stress.json`. It also compares hit results and processing time for 3,100 bar segments. These timings measure individual methods, not page rendering or real pointer latency. Native checks cover background saving, sleep races, all themes, and Chinese/English window layouts. Real pointer and accessibility button/typing checks require a working UI automation connection; checks that could not run are reported separately as `SKIP` and excluded from the pass count.
 
 Windows, with .NET 8 SDK:
 

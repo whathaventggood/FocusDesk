@@ -79,7 +79,7 @@ struct PlanView: View {
                             }
                         }
                     }
-                    .padding(22)
+                    .padding(20)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
                 .onChange(of: newTask?.id) { id in
@@ -108,9 +108,10 @@ struct PlanView: View {
 
     private var header: some View {
         HStack(spacing: 16) {
+            DeskPageIcon(symbol: "calendar", theme: store.theme)
             VStack(alignment: .leading, spacing: 7) {
-                Text(L("今日计划")).font(.system(size: 25, weight: .bold))
-                Text(store.now.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).month().day().weekday(.wide)))
+                Text(L("今日计划")).font(.system(size: 22, weight: .bold)).fontDesign(store.theme.design)
+                Text(store.now.formatted(.dateTime.locale(Locale(identifier: store.language.rawValue)).month().day().weekday(.wide)))
                     .font(.callout).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     ProgressView(value: store.todayProgress.completionRate)
@@ -126,7 +127,7 @@ struct PlanView: View {
             Button(action: beginAdding) { Label(retainedNewTask == nil ? L("新增任务") : L("继续新增"), systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
         }
-        .padding(22)
+        .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
     private func editor(for task: PlanTask, isNew: Bool) -> some View {
@@ -201,6 +202,7 @@ private struct TaskSummaryRow: View {
                 Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22))
                     .foregroundStyle(isCompleted ? Color.green : Color.secondary)
+                    .frame(width: 30, height: 30).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(isCompleted ? L("撤销今日完成") : L("标记今日已完成"))
@@ -242,9 +244,9 @@ private struct TaskSummaryRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(L("编辑%@", "\(task.title)"))
             HStack(spacing: 12) {
-                Button(action: onEdit) { Image(systemName: "pencil") }
+                Button(action: onEdit) { Image(systemName: "pencil").frame(width: 30, height: 30).contentShape(Rectangle()) }
                     .help(L("在此处编辑任务")).accessibilityLabel(L("编辑%@", "\(task.title)"))
-                Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+                Button(role: .destructive, action: onDelete) { Image(systemName: "trash").frame(width: 30, height: 30).contentShape(Rectangle()) }
                     .help(L("删除任务")).accessibilityLabel(L("删除%@", "\(task.title)"))
             }
             .buttonStyle(.borderless)

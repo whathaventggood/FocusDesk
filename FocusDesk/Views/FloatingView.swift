@@ -9,19 +9,23 @@ struct CompactView: View {
     private var session: ActivityTimerSession? { store.activityTimers.displayedSession }
     private var isDue: Bool { session?.isAwaitingCompletion == true }
     private var accent: Color { isDue ? store.theme.finished : store.theme.accent }
-    private var progress: Double { session.map { $0.progress(at: store.now) } ?? store.snapshot.progress }
+    private var progress: Double { session.map { $0.progress(at: store.activityDisplayNow) } ?? store.snapshot.progress }
     private var side: CGFloat { CGFloat(store.compactSize) }
     private var activityName: String {
         store.activityTimers.activities.first { $0.id == session?.activityID }?.name ?? L("事项")
     }
     private var clock: String {
         guard let session else { return "" }
-        let value = session.mode == .countdown ? session.remaining(at: store.now) : session.elapsed(at: store.now)
+        let value = session.mode == .countdown ? session.remaining(at: store.activityDisplayNow) : session.elapsed(at: store.activityDisplayNow)
         let formatted = ActivityDurationFormat.clock(value, roundUp: session.mode == .countdown)
         return value < 3600 ? String(formatted.dropFirst(3)) : formatted
     }
 
     var body: some View {
+        ClockDrivenContent(clock: store.clock, enabled: true) { content }
+    }
+
+    private var content: some View {
         ZStack {
             RoundedRectangle(cornerRadius: side * 0.24, style: .continuous)
                 .fill(store.theme.background)
@@ -167,6 +171,10 @@ struct FloatingView: View {
     private var accent: Color { store.theme.accent }
 
     var body: some View {
+        ClockDrivenContent(clock: store.clock, enabled: true) { content }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 17) {
             HStack(spacing: 8) {
                 Image(systemName: "circle.hexagongrid.fill")
@@ -276,7 +284,7 @@ struct FloatingView: View {
                         .foregroundStyle(.secondary)
                     Button { store.onShowHistory?() } label: { Image(systemName: "chart.bar.xaxis") }
                         .buttonStyle(.plain)
-                        .help(L("专注记录"))
+                        .help(L("计划回顾"))
                         .accessibilityLabel(L("打开专注记录"))
                 }
                 .font(.system(size: 11))
@@ -332,7 +340,7 @@ struct FloatingView: View {
         }
         .padding(22)
         .frame(width: Self.panelSize.width, height: Self.panelSize.height, alignment: .top)
-        .modifier(ThemeSurface(store: store))
+        .modifier(ThemeSurface(store: store, themedTypography: true))
         .id(store.language)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
@@ -396,6 +404,10 @@ private struct FloatingActivityTimer: View {
     }
 
     var body: some View {
+        ClockDrivenContent(clock: store.clock, enabled: session.runningSince != nil) { content }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 17) {
             HStack {
                 Label(isDue ? L("已到时") : session.isPaused ? L("已暂停") : L("事项%@", "\(session.mode.title)"),
@@ -419,7 +431,7 @@ private struct FloatingActivityTimer: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(isDue ? L("已到时") : ActivityDurationFormat.clock(
-                    session.mode == .countdown ? session.remaining(at: store.now) : session.elapsed(at: store.now),
+                    session.mode == .countdown ? session.remaining(at: store.activityDisplayNow) : session.elapsed(at: store.activityDisplayNow),
                     roundUp: session.mode == .countdown))
                     .font(.system(size: isDue ? 30 : 38, weight: .light, design: .rounded))
                     .monospacedDigit()
@@ -429,7 +441,7 @@ private struct FloatingActivityTimer: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 if session.mode == .countdown {
-                    ProgressView(value: session.progress(at: store.now))
+                    ProgressView(value: session.progress(at: store.activityDisplayNow))
                         .tint(accent)
                         .accessibilityLabel(L("事项倒计时进度"))
                 }
@@ -438,19 +450,20 @@ private struct FloatingActivityTimer: View {
 
             HStack {
                 if isDue {
-                    Button(L("+5 分钟")) { store.extendActivityCountdown() }
+                    Button(L("+5 分钟")) { Task { await store.performActivityAction(.extend) } }
                         .help(L("从现在开始，为这个事项再计时 5 分钟"))
                         .accessibilityIdentifier("floatingExtendCountdown")
                 } else {
-                    Button(session.isPaused ? L("继续") : L("暂停")) { store.toggleActivityTimerPause() }
+                    Button(session.isPaused ? L("继续") : L("暂停")) { Task { await store.performActivityAction(.togglePause) } }
                 }
                 Spacer()
-                Button(isDue ? L("完成") : L("结束并记录")) { store.finishActivityTimer() }
+                Button(isDue ? L("完成") : L("结束并记录")) { Task { await store.performActivityAction(.finish) } }
                     .buttonStyle(.borderedProminent)
                     .tint(accent)
                     .accessibilityIdentifier("floatingFinishTimer")
             }
             .controlSize(.small)
+            .disabled(store.activityIsBusy)
 
             if let error = store.activityTimerError {
                 Text(error)

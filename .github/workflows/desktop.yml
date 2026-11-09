@@ -17,6 +17,12 @@ jobs:
         run: python3 scripts/localization/generate.py && git diff --exit-code FocusDesk/Models/AppLanguage.swift shared/
       - name: XCTest
         run: bash scripts/test-xcode.sh
+      - name: Foundation and chart hit testing checks
+        run: bash scripts/check-core.sh
+      - name: Statistics equivalence and performance checks
+        run: |
+          bash scripts/check-performance.sh
+          build/ux-validation/FocusDeskPerformanceChecks --stress
       - name: Native window and effect checks
         run: bash scripts/check-native.sh
       - uses: actions/upload-artifact@v4
@@ -24,15 +30,21 @@ jobs:
         with:
           name: macos-screenshots
           path: build/native-smoke/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-statistics-report
+          path: build/ux-validation/*.json
       - name: Package Chinese and English editions
         run: |
           mkdir -p build/desktop-release
           bash scripts/build-app.sh Release
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/Release/FocusDesk.app/Contents/Info.plist)
           for language in zh-Hans en; do
             /usr/libexec/PlistBuddy -c "Set :FocusDeskDefaultLanguage $language" build/Release/FocusDesk.app/Contents/Info.plist
             codesign --force --sign - build/Release/FocusDesk.app
             codesign --verify --deep --strict build/Release/FocusDesk.app
-            ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl build/Release/FocusDesk.app "build/desktop-release/FocusDesk-3.1.0-macos-arm64-$language.zip"
+            ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl build/Release/FocusDesk.app "build/desktop-release/FocusDesk-$version-macos-arm64-$language.zip"
           done
       - uses: actions/upload-artifact@v4
         with:

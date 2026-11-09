@@ -19,8 +19,9 @@ struct HistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
+                DeskPageIcon(symbol: "chart.bar.xaxis", theme: store.theme)
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(L("专注记录")).font(.system(size: 25, weight: .bold))
+                    Text(L("计划回顾")).font(.system(size: 22, weight: .bold)).fontDesign(store.theme.design)
                     Text(L("回顾每天的计划与完成情况"))
                         .foregroundStyle(.secondary)
                 }
@@ -28,10 +29,10 @@ struct HistoryView: View {
                 Button(L("事项时长")) { store.onShowTimers?() }
                 Button(L("今日计划")) { store.onShowPlan?() }
             }
-            .padding(24)
+            .padding(.horizontal, 20).padding(.vertical, 14)
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     Picker(L("统计范围"), selection: $range) {
                         Text(L("近 7 天")).tag(7)
                         Text(L("近 30 天")).tag(30)
@@ -89,7 +90,7 @@ struct HistoryView: View {
                             .padding(.vertical, 50)
                     }
                 }
-                .padding(24)
+                .padding(20)
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }

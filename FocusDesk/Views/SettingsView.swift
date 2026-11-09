@@ -18,12 +18,11 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    Image(systemName: "circle.hexagongrid.fill")
-                        .font(.system(size: 30)).foregroundStyle(store.theme.accent)
+                    DeskPageIcon(symbol: "slider.horizontal.3", theme: store.theme)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L("FocusDesk 设置")).font(.title2.weight(.semibold))
+                        Text(L("FocusDesk 设置")).font(.system(size: 22, weight: .bold)).fontDesign(store.theme.design)
                         Text(L("让计划安静地陪你完成每一天"))
                             .font(.callout).foregroundStyle(.secondary)
                     }
@@ -180,14 +179,14 @@ struct SettingsView: View {
                     Text(recoveryError).font(.caption).foregroundStyle(.red)
                 }
                 HStack {
-                    Text(L("FocusDesk %@", "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "开发版")"))
+                    Text(L("FocusDesk %@（构建 %@）", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? L("开发版"), Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))
                         .font(.caption).foregroundStyle(.tertiary)
                     Spacer()
-                    Button(L("专注记录")) { store.onShowHistory?() }
+                    Button(L("计划回顾")) { store.onShowHistory?() }
                     Button(L("今日计划")) { store.onShowPlan?() }
                 }
             }
-            .padding(28)
+            .padding(20)
         }
         .frame(width: 520, height: 720)
         .modifier(ThemeSurface(store: store))
@@ -341,17 +340,115 @@ extension Color {
 
 struct ThemeSurface: ViewModifier {
     @ObservedObject var store: PlanStore
+    var themedTypography = false
     func body(content: Content) -> some View {
         content
             .environment(\.locale, Locale(identifier: store.language.rawValue))
-            .fontDesign(store.theme.design)
+            .fontDesign(themedTypography ? store.theme.design : .default)
             .tint(store.theme.accent)
             .foregroundStyle(store.theme.foreground)
             .background {
                 store.theme.background
-                ThemeTexture(theme: store.theme)
+                if !themedTypography {
+                    LinearGradient(colors: [store.theme.accent.opacity(0.045), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
+                ThemeTexture(theme: store.theme).opacity(themedTypography ? 1 : 0.15)
             }
-            .preferredColorScheme(store.theme == .classic || store.theme == .minimal ? nil : store.theme.dark ? .dark : .light)
+            .background(ThemeAppearanceBridge(dark: store.theme.dark).frame(width: 0, height: 0))
+            .preferredColorScheme(store.theme.dark ? .dark : .light)
+    }
+}
+
+enum DeskLayout {
+    static let pageInset: CGFloat = 20
+    static let cardInset: CGFloat = 16
+    static let cardRadius: CGFloat = 14
+    static let itemRadius: CGFloat = 8
+}
+
+struct DeskSurface: ViewModifier {
+    let theme: DeskTheme
+    var emphasized = false
+
+    func body(content: Content) -> some View {
+        content
+            .padding(DeskLayout.cardInset)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: DeskLayout.cardRadius, style: .continuous)
+                    .fill(theme.dark ? Color.white.opacity(0.035) : Color.white.opacity(0.86))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: DeskLayout.cardRadius, style: .continuous)
+                    .strokeBorder(emphasized ? theme.accent.opacity(0.32) : theme.foreground.opacity(theme.dark ? 0.07 : 0.06))
+            }
+            .shadow(color: .black.opacity(theme.dark ? 0.06 : 0.025), radius: 8, y: 3)
+    }
+}
+
+struct DeskPageIcon: View {
+    let symbol: String
+    let theme: DeskTheme
+    var body: some View {
+        Image(systemName: symbol).font(.system(size: 18, weight: .medium))
+            .foregroundStyle(theme.accent)
+            .frame(width: 38, height: 38)
+            .background(theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+struct DeskSectionHeading: View {
+    let title: String
+    let symbol: String
+    let theme: DeskTheme
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .medium))
+                .foregroundStyle(theme.accent).frame(width: 23, height: 23)
+                .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                .accessibilityHidden(true)
+            Text(title).font(.system(size: 14, weight: .semibold))
+        }
+    }
+}
+
+/// Clock updates stay local to visible time-dependent content, rather than
+/// invalidating settings, history and every form field once per second.
+struct ClockDrivenContent<Content: View>: View {
+    let clock: FocusClock
+    var enabled = true
+    @ViewBuilder var content: () -> Content
+    @State private var tick = Date.distantPast
+
+    var body: some View {
+        let _ = tick
+        content().onReceive(clock.$now.dropFirst()) { date in
+            if enabled, tick != date { tick = date }
+        }
+    }
+}
+
+/// SwiftUI's color scheme alone does not consistently update AppKit-backed pickers.
+private struct ThemeAppearanceBridge: NSViewRepresentable {
+    var dark: Bool
+    func makeNSView(context: Context) -> ThemeAppearanceView { ThemeAppearanceView() }
+    func updateNSView(_ view: ThemeAppearanceView, context: Context) {
+        view.themeAppearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        view.applyAppearance()
+    }
+}
+
+private final class ThemeAppearanceView: NSView {
+    var themeAppearance: NSAppearance?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyAppearance()
+    }
+    func applyAppearance() {
+        if appearance?.name != themeAppearance?.name { appearance = themeAppearance }
+        if window?.appearance?.name != themeAppearance?.name { window?.appearance = themeAppearance }
     }
 }
 

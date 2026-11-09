@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import Combine
 
 private final class SmokeDefaults: UserDefaults {
     private var values: [String: Any] = [:]
@@ -14,6 +15,43 @@ private final class SmokeDefaults: UserDefaults {
 
 private struct SmokeFailure: Error, CustomStringConvertible {
     let description: String
+}
+
+private final class HeldActivityLock {
+    private var descriptor: Int32
+    init(url: URL) throws {
+        descriptor = open(url.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0, flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            if descriptor >= 0 { close(descriptor) }
+            descriptor = -1
+            throw SmokeFailure(description: "Unable to acquire the isolated test lock")
+        }
+    }
+    func release() {
+        if descriptor >= 0 { flock(descriptor, LOCK_UN); close(descriptor); descriptor = -1 }
+    }
+    deinit { release() }
+}
+
+private final class StudyChartConfiguration: ObservableObject {
+    @Published var excluded: Set<UUID> = []
+    @Published var days = 7
+}
+
+private struct StudyChartPreview: View {
+    @ObservedObject var store: PlanStore
+    @ObservedObject var configuration: StudyChartConfiguration
+
+    var body: some View {
+        let today = Calendar.current.startOfDay(for: store.now)
+        let first = Calendar.current.date(byAdding: .day, value: 1 - configuration.days, to: today)!
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        ActivityDailyChart(points: store.activityTimers.dailyDurations(at: store.now, days: configuration.days)
+            .filter { !configuration.excluded.contains($0.activityID) },
+                           activities: store.activityTimers.activities, dateRange: first...end, days: configuration.days)
+            .padding(24)
+            .modifier(ThemeSurface(store: store))
+    }
 }
 
 @main
@@ -42,16 +80,22 @@ private enum NativeSmoke {
         // Start from the native run loop, allowing nested event pumping to deliver
         // main-queue hover deadlines while this synchronous harness is checking them.
         Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 do {
-                    print("Checking native launch callback; windows: \(application.windows.map(\.title))")
-                    try verifyPersistence(in: output)
-                    try verifyQuoteRefresh(in: output)
-                    try verifyActivityTimers(in: output)
-                    try verifyWindows(controller: controller, output: output)
-                    print("PASS: \(checkCount) native window, hover, persistence, and recovery checks")
-                    print("Preview PNGs: \(output.path)")
-                    application.terminate(nil)
+                    let arguments = CommandLine.arguments
+                    if arguments.contains("--experience-only") {
+                        try await verifyExperienceFlows(in: output)
+                    } else if arguments.contains("--background-only") || !(arguments.contains("--chart-only") || arguments.contains("--usability-only") || arguments.contains("--interactive-study")) {
+                        try await verifyBackgroundActivityIO(in: output)
+                        try await verifyExperienceFlows(in: output)
+                    }
+                    // A run-loop timer leaves the main dispatch queue available
+                    // to Combine deliveries during the legacy nested event pumps.
+                    Timer.scheduledTimer(withTimeInterval: 0.01, repeats: false) { _ in
+                        MainActor.assumeIsolated {
+                            runWindowChecks(controller: controller, application: application, output: output)
+                        }
+                    }
                 } catch {
                     print("FAIL: \(error)")
                     controller.store.stop()
@@ -63,9 +107,555 @@ private enum NativeSmoke {
     }
 
     @MainActor
+    private static func runWindowChecks(controller: AppController, application: NSApplication, output: URL) {
+        do {
+            print("Checking native launch callback; windows: \(application.windows.map(\.title))")
+            let arguments = CommandLine.arguments
+            if arguments.contains("--interactive-study") {
+                try showInteractiveStudyPreview(controller: controller, output: output)
+                return
+            }
+            if arguments.contains("--background-only") || arguments.contains("--experience-only") {
+                // The asynchronous checks have completed above.
+            } else if arguments.contains("--usability-only") {
+                try verifyStudyUsability(in: output)
+            } else if arguments.contains("--chart-only") {
+                try verifyStudyChartHover(in: output)
+                try verifyStudyPreviews(in: output)
+                try verifyStudyUsability(in: output)
+            } else {
+                try verifyPersistence(in: output)
+                try verifyQuoteRefresh(in: output)
+                try verifyActivityTimers(in: output)
+                try verifySleepAndStudyRecords(in: output)
+                try verifyStudyChartHover(in: output)
+                try verifyStudyPreviews(in: output)
+                try verifyStudyUsability(in: output)
+                try verifyWindows(controller: controller, output: output)
+            }
+            print("PASS: \(checkCount) native window, hover, persistence, and recovery checks")
+            print("Preview PNGs: \(output.path)")
+            application.terminate(nil)
+        } catch {
+            print("FAIL: \(error)")
+            controller.store.stop()
+            exit(1)
+        }
+    }
+
+    @MainActor
     private static func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
         guard try condition() else { throw SmokeFailure(description: message) }
         checkCount += 1
+    }
+
+    @MainActor
+    private static func verifyBackgroundActivityIO(in output: URL) async throws {
+        var now = ISO8601DateFormatter().date(from: "2026-11-08T04:10:00Z")!
+        let directory = output.appendingPathComponent("background-\(UUID().uuidString)")
+        let writer = ActivityTimerStore(storageURL: directory.appendingPathComponent("timers.json"))
+        var document = ActivityTimerDocument()
+        try document.addActivity(name: "后台计时")
+        let id = document.activities[0].id
+        for index in 0..<1000 {
+            try document.addRecord(activityID: id, startedAt: now.addingTimeInterval(Double(-86400 - index * 1000)), duration: 60, at: now)
+        }
+        try writer.save(document)
+        let store = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { store.stop() }
+        try require(!store.activityDataReady, "Cold activity loading must begin asynchronously")
+        func waitUntil(_ description: String, _ condition: () -> Bool) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 4
+            while !condition() {
+                guard ProcessInfo.processInfo.systemUptime < deadline else { throw SmokeFailure(description: "Timed out: \(description)") }
+                try await Task.sleep(nanoseconds: 5_000_000)
+            }
+        }
+        try await waitUntil("initial background load") { store.activityDataReady && !store.activityReadInProgress }
+        try require(store.activityTimers.sessions.count == 1000, "Background load must restore every record")
+
+        var rootChanges = 0, clockChanges = 0
+        let rootSubscription = store.objectWillChange.sink { rootChanges += 1 }
+        let clockSubscription = store.clock.$now.dropFirst().sink { _ in clockChanges += 1 }
+        for _ in 0..<40 { now = now.addingTimeInterval(1); store.refresh(); try await Task.sleep(nanoseconds: 2_000_000) }
+        try await waitUntil("idle poll") { !store.activityReadInProgress }
+        try require(clockChanges == 40, "Clock subscribers must receive all ticks")
+        try require(rootChanges == 0, "Idle ticks must not invalidate settings, history and static forms")
+        rootSubscription.cancel(); clockSubscription.cancel()
+
+        _ = try writer.update { try $0.renameActivity(id: id, name: "后台计时 · 外部更新") }
+        store.refresh()
+        try await waitUntil("external document poll") { !store.activityReadInProgress }
+        try require(store.activityTimers.activities[0].name == "后台计时 · 外部更新",
+                    "Background polling must publish another window's committed changes")
+
+        let held = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        let clickedAt = now
+        let start = Task { @MainActor in await store.performActivityAction(.start(id, .stopwatch, nil)) }
+        try await waitUntil("pending start") { store.activitySaveInProgress }
+        var beats = 0
+        let heartbeat = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { _ in beats += 1 }
+        now = now.addingTimeInterval(60)
+        store.refresh()
+        try await Task.sleep(nanoseconds: 80_000_000)
+        heartbeat.invalidate()
+        try require(beats > 0 && store.activitySaveInProgress, "A held file lock must leave the main event loop responsive")
+        held.release()
+        let startError = await start.value
+        try require(startError == nil, "Queued Start should save after the lock is released")
+        try require(store.activityTimers.activeSession?.startedAt == clickedAt, "Storage waiting must not change the click timestamp")
+        now = now.addingTimeInterval(30)
+        let pauseLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        let pause = Task { @MainActor in await store.performActivityAction(.togglePause) }
+        try await waitUntil("pending pause") { store.activitySaveInProgress }
+        now = now.addingTimeInterval(20)
+        store.refresh()
+        try require(store.activityTimers.activeSession?.elapsed(at: store.activityDisplayNow) == 90,
+                    "The visible clock must freeze at the pause click while saving")
+        try require(store.activityStatistics().allTimeTotals[id] == 60_090,
+                    "Live statistics must use the same pending pause boundary")
+        pauseLock.release()
+        let pauseError = await pause.value
+        try require(pauseError == nil && store.activityTimers.activeSession?.elapsed(at: now) == 90,
+                    "Pause must use the requested boundary rather than worker completion time")
+        let finishError = await store.performActivityAction(.finish)
+        try require(finishError == nil && store.activityTimers.sessions.last?.savedDuration == 90, "Background finish must preserve exact elapsed time")
+        try await waitUntil("refresh drain") { !store.activityReadInProgress }
+
+        let beforeFailure = try Data(contentsOf: writer.storageURL)
+        let busy = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        let failure = await store.performActivityAction(.add("不应在超时后写入"))
+        try require(failure != nil && !store.activitySaveInProgress, "A lock deadline must release the pending UI state")
+        try require(try Data(contentsOf: writer.storageURL) == beforeFailure, "A timed-out mutation must not alter the document")
+        busy.release()
+        let retry = await store.performActivityAction(.add("重试成功"))
+        try require(retry == nil && store.activityTimerError == nil, "A lock timeout must not permanently block subsequent writes")
+
+        let restartError = await store.performActivityAction(.start(id, .stopwatch, nil))
+        try require(restartError == nil, "Sleep fixture should start")
+        now = now.addingTimeInterval(60)
+        try await waitUntil("before sleep") { !store.activityReadInProgress }
+        let sleepLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        store.pauseActivityTimerForSleep()
+        try require(store.activityTimers.activeSession?.isPaused == true, "Sleep must pause visible time immediately")
+        let boundaryFiles = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasPrefix("timers.sleep-") }
+        try require(!boundaryFiles.isEmpty, "The sleep boundary must survive a blocked full-document write")
+        now = now.addingTimeInterval(17 * 3600)
+        sleepLock.release()
+        try await waitUntil("sleep merge") { !store.activityReadInProgress }
+        store.refresh()
+        try await waitUntil("wake merge") { !store.activityReadInProgress }
+        try require(store.activityTimers.activeSession?.elapsed(at: now) == 60 && store.activityTimers.activeSession?.isPaused == true,
+                    "Sleep retry must exclude overnight time")
+        let reloaded = ActivityTimerStore(storageURL: writer.storageURL).load()
+        try require(reloaded.activeSession?.elapsed(at: now) == 60 && reloaded.activeSession?.isPaused == true,
+                    "The merged sleep boundary must survive restart")
+
+        let quitLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        let saveBeforeQuit = Task { @MainActor in await store.performActivityAction(.finish) }
+        try await waitUntil("save before quit") { store.activitySaveInProgress }
+        let quitting = Task { @MainActor in await store.prepareForTermination() }
+        try await Task.sleep(nanoseconds: 30_000_000)
+        try require(store.needsActivityFlush, "Quit must wait for an acknowledged write")
+        quitLock.release()
+        let saveResult = await saveBeforeQuit.value
+        let quitResult = await quitting.value
+        try require(saveResult == nil && quitResult, "Quit should complete after the write is persisted")
+        try require(ActivityTimerStore(storageURL: writer.storageURL).load().activeSession == nil, "Quit must not drop the final record")
+
+        // A Start already queued when sleep arrives must be persisted as paused.
+        let queuedLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        let queuedStart = Task { @MainActor in await store.performActivityAction(.start(id, .stopwatch, nil)) }
+        try await waitUntil("start before sleep") { store.activitySaveInProgress }
+        now = now.addingTimeInterval(45)
+        store.pauseActivityTimerForSleep()
+        now = now.addingTimeInterval(3600)
+        queuedLock.release()
+        let queuedError = await queuedStart.value
+        try require(queuedError == nil, "Start queued before sleep must still save")
+        try await waitUntil("queued start polling drain") { !store.activityReadInProgress }
+        store.refresh()
+        try await waitUntil("queued start sleep merge") { !store.activityReadInProgress }
+        try require(store.activityTimers.activeSession?.elapsed(at: now) == 45 && store.activityTimers.activeSession?.isPaused == true,
+                    "A queued Start must exclude sleep even before its session appears in the UI")
+
+        // A pending, known sleep pause belongs before a later explicit Resume.
+        try await waitUntil("before pending sleep resume") { !store.activityReadInProgress }
+        let resumeLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        store.pauseActivityTimerForSleep()
+        let resumedAt = now
+        let resume = Task { @MainActor in await store.performActivityAction(.togglePause) }
+        try await waitUntil("resume after sleep") { store.activitySaveInProgress }
+        resumeLock.release()
+        let resumeError = await resume.value
+        try require(resumeError == nil && store.activityTimers.activeSession?.runningSince == resumedAt,
+                    "An acknowledged sleep boundary must not undo the user's subsequent Resume")
+        _ = await store.performActivityAction(.finish)
+
+        // The initial disk snapshot must not overwrite a sleep pause arriving during load.
+        var coldDocument = ActivityTimerDocument()
+        try coldDocument.addActivity(name: "启动时睡眠")
+        try coldDocument.start(activityID: coldDocument.activities[0].id, mode: .stopwatch, duration: nil, at: now.addingTimeInterval(-30))
+        let coldDirectory = output.appendingPathComponent("cold-sleep-\(UUID().uuidString)")
+        let coldWriter = ActivityTimerStore(storageURL: coldDirectory.appendingPathComponent("timers.json"))
+        try coldWriter.save(coldDocument)
+        let coldLock = try HeldActivityLock(url: coldWriter.storageURL.appendingPathExtension("lock"))
+        let coldStore = PlanStore(storageDirectory: coldDirectory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                                  nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { coldStore.stop() }
+        coldStore.pauseActivityTimerForSleep()
+        now = now.addingTimeInterval(3600)
+        coldLock.release()
+        try await waitUntil("sleep during initial load") { coldStore.activityDataReady && !coldStore.activityReadInProgress }
+        try require(coldStore.activityTimers.activeSession?.isPaused == true && coldStore.activityTimers.activeSession?.elapsed(at: now) == 30,
+                    "Sleep during a cold read must stay paused when that snapshot arrives")
+
+        var countdownDocument = ActivityTimerDocument()
+        try countdownDocument.addActivity(name: "启动时已到时")
+        let countdownID = countdownDocument.activities[0].id
+        try countdownDocument.start(activityID: countdownID, mode: .countdown, duration: 120, at: now.addingTimeInterval(-900))
+        let countdownDirectory = output.appendingPathComponent("background-countdown-\(UUID().uuidString)")
+        try ActivityTimerStore(storageURL: countdownDirectory.appendingPathComponent("timers.json")).save(countdownDocument)
+        let countdownStore = PlanStore(storageDirectory: countdownDirectory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                                       nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { countdownStore.stop() }
+        try await waitUntil("expired countdown load") { countdownStore.activityDataReady && !countdownStore.activityReadInProgress }
+        try require(countdownStore.timerNotice != nil && countdownStore.activityTimers.total(for: [countdownID], at: now) == 120,
+                    "Background startup must restore an expired countdown at its exact deadline")
+        try require(countdownStore.countdownCompletionEventID == nil,
+                    "An expired timer loaded at startup must not replay its completion effect")
+        let extendError = await countdownStore.performActivityAction(.extend)
+        try require(extendError == nil, "A loaded reminder must still support an explicit extension")
+        now = now.addingTimeInterval(300)
+        countdownStore.refresh()
+        try await waitUntil("background countdown completion") { !countdownStore.activityReadInProgress }
+        let completion = countdownStore.countdownCompletionEventID
+        try require(completion != nil && countdownStore.activityTimers.total(for: [countdownID], at: now) == 420,
+                    "An extension completed in this app session must emit one completion event")
+        countdownStore.refresh()
+        try await waitUntil("repeat completion poll") { !countdownStore.activityReadInProgress }
+        try require(countdownStore.countdownCompletionEventID == completion, "Repeated background polls must retain a single completion event")
+        print("PASS: background cold load, local clock publishing, lock responsiveness/deadline, click timestamps, sleep journal/restart and quit flushing")
+    }
+
+    @MainActor
+    private static func verifyExperienceFlows(in output: URL) async throws {
+        var now = ISO8601DateFormatter().date(from: "2026-11-09T04:10:00Z")!
+        let directory = output.appendingPathComponent("experience-\(UUID().uuidString)")
+        let writer = ActivityTimerStore(storageURL: directory.appendingPathComponent("timers.json"))
+        var document = ActivityTimerDocument()
+        for name in ["SQL", "HTTP 与计算机网络", "Python 语言与异步编程 · 任务调度和网络请求练习"] {
+            try document.addActivity(name: name)
+        }
+        let sql = document.activities[0], network = document.activities[1], python = document.activities[2]
+        try document.addRecord(activityID: sql.id, startedAt: now.addingTimeInterval(-86400), duration: 3600, at: now)
+        try document.addRecord(activityID: network.id, startedAt: now.addingTimeInterval(-3600), duration: 900, at: now)
+        try writer.save(document)
+        let preferences = SmokeDefaults()
+        let malformed = try JSONDecoder().decode(ActivityExperiencePreferences.self, from: Data("{\"range\":-999,\"section\":99,\"timerPreferences\":{\"test\":{\"modeValue\":\"unknown\",\"duration\":1e99}}}".utf8))
+        try require(malformed.range == 7 && malformed.section == .timer && malformed.timerPreferences["test"]?.duration == 1500,
+                    "Invalid restored preferences must fall back before building ranges or converting durations to integers")
+        let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { store.stop() }
+        func waitUntil(_ description: String, _ condition: () -> Bool) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 6
+            while !condition() {
+                guard ProcessInfo.processInfo.systemUptime < deadline else { throw SmokeFailure(description: "Timed out: \(description)") }
+                try await Task.sleep(nanoseconds: 5_000_000)
+            }
+        }
+        func perform(_ action: ActivityTimerAction, _ description: String) async throws {
+            let error = await store.performActivityAction(action)
+            try require(error == nil, "\(description): \(error ?? "")")
+        }
+        try await waitUntil("experience initial load") { store.activityDataReady && !store.activityReadInProgress }
+        try require(store.activityTimers.activeSession == nil, "Restoring recent projects must never start a timer")
+        store.rememberActivityRange(30)
+        store.rememberActivitySort(.ascending)
+        store.rememberActivitySection(.statistics)
+        store.rememberActivitySelection([sql.id, network.id])
+        try require(store.activityExperience.selectedActivityIDs == [sql.id, network.id], "The explicit project filter must be remembered")
+
+        let startAt = now
+        try await perform(.start(sql.id, .countdown, 120), "Remembered countdown should start")
+        now = now.addingTimeInterval(30)
+        let switchAt = now
+        try await perform(.switchActivity(network.id, .stopwatch, nil), "An explicit switch should commit")
+        try require(store.activityTimers.sessions.filter { $0.endedAt == nil }.count == 1, "Switching must retain exactly one active timer")
+        try require(store.activityTimers.sessions.first { $0.activityID == sql.id && $0.startedAt == startAt }?.endedAt == switchAt,
+                    "The previous timer must end at the requested switch time")
+        try require(store.activityTimers.activeSession?.activityID == network.id && store.activityTimers.activeSession?.startedAt == switchAt,
+                    "The new timer must begin at that same switch time")
+        try require(store.timerPreference(for: sql.id).mode == .countdown && store.timerPreference(for: sql.id).duration == 120,
+                    "Per-project parameters must preserve the countdown duration")
+        try require(Array(store.recentActivities.map(\.id).prefix(2)) == [network.id, sql.id], "Successful start and switch must update recent order")
+
+        let beforeBlockedArchive = store.activityTimers
+        let archiveRunningError = await store.performActivityAction(.archive(network.id, true))
+        try require(archiveRunningError != nil && store.activityTimers == beforeBlockedArchive,
+                    "Archiving an active timer must not implicitly finish it")
+        let sqlTotal = store.activityTimers.total(for: [sql.id], at: now)
+        try await perform(.archive(sql.id, true), "A completed project should archive")
+        try require(!store.recentActivities.contains { $0.id == sql.id }, "Archived projects must leave recent-start candidates")
+        try require(store.activityTimers.total(for: [sql.id], at: now) == sqlTotal, "Archiving must retain the complete historical total")
+        let archiveUndo = await store.undoActivityChange()
+        try require(archiveUndo == nil && store.activityTimers.activities.first { $0.id == sql.id }?.isArchived == false,
+                    "Operation undo must restore an archived project")
+        let archiveRedo = await store.redoActivityChange()
+        try require(archiveRedo == nil && store.activityTimers.activities.first { $0.id == sql.id }?.isArchived == true,
+                    "Operation redo must reapply only the archive field")
+        try await perform(.archive(sql.id, false), "An archived project should restore")
+        try require(store.activityTimers.activities.first { $0.id == sql.id }?.chartLabel == sql.chartLabel,
+                    "Restoring a project must preserve its original visible number")
+
+        try await perform(.archive(python.id, true), "Unused project fixture should archive")
+        let beforeBadSwitch = store.activityTimers
+        let badSwitchError = await store.performActivityAction(.switchActivity(python.id, .stopwatch, nil))
+        try require(badSwitchError != nil && store.activityTimers == beforeBadSwitch,
+                    "A switch to an archived target must preserve the entire running state")
+        now = now.addingTimeInterval(30)
+        try await perform(.finish, "The switched timer should finish")
+        let editedID = store.activityTimers.sessions.last!.id
+        let rawSegments = store.activityTimers.sessions.last!.segments
+        try await perform(.editRecord(editedID, 20, "连接池与请求复用"), "Duration and note should save together")
+        let persistedEdit = ActivityTimerStore(storageURL: writer.storageURL).load().sessions.first { $0.id == editedID }
+        try require(persistedEdit?.savedDuration == 20 && persistedEdit?.note == "连接池与请求复用",
+                    "One committed record edit must persist both fields")
+        try require(persistedEdit?.segments == rawSegments, "Editing a record must retain original timer segments")
+        let diskBeforeInvalid = try Data(contentsOf: writer.storageURL)
+        let invalidEditError = await store.performActivityAction(.editRecord(editedID, 99999, "不应保存的备注"))
+        let diskAfterInvalid = try Data(contentsOf: writer.storageURL)
+        try require(invalidEditError != nil && diskAfterInvalid == diskBeforeInvalid,
+                    "Invalid record edits must never save the note independently")
+        let recordUndo = await store.undoActivityChange()
+        try require(recordUndo == nil && store.activityTimers.sessions.first { $0.id == editedID }?.note == nil
+                    && store.activityTimers.sessions.first { $0.id == editedID }?.correctedDuration == nil,
+                    "Undo must restore duration and note as one operation")
+        let recordRedo = await store.redoActivityChange()
+        try require(recordRedo == nil && store.activityTimers.sessions.first { $0.id == editedID }?.savedDuration == 20,
+                    "Redo must restore the combined record edit")
+        try await perform(.addNotedRecord(sql.id, now.addingTimeInterval(-7200), 60, "窗口函数练习"), "A noted record should be added")
+        let addedID = store.activityTimers.sessions.last!.id
+        let undoAfterNewRecord = await store.undoActivityChange()
+        try require(undoAfterNewRecord == nil && store.activityTimers.sessions.contains { $0.id == addedID && $0.note == "窗口函数练习" },
+                    "Undoing an older field edit must preserve records added afterward")
+
+        try await perform(.rename(sql.id, "SQL · 本地修改"), "Rename should create an undo item")
+        _ = try writer.update { try $0.renameActivity(id: sql.id, name: "SQL · 外部较新修改") }
+        let conflictingUndo = await store.undoActivityChange()
+        try require(conflictingUndo != nil && ActivityTimerStore(storageURL: writer.storageURL).load().activities.first { $0.id == sql.id }?.name == "SQL · 外部较新修改",
+                    "Conflicting undo must preserve the newer external field")
+        store.refresh()
+        try await waitUntil("external rename after undo conflict") { !store.activityReadInProgress }
+
+        try await perform(.delete(network.id), "Deleting a stopped project should save")
+        try require(!store.activityExperience.recentActivityIDs.contains(network.id)
+                    && store.activityExperience.timerPreferences[network.id.uuidString] == nil
+                    && store.activityExperience.selectedActivityIDs?.contains(network.id) == false,
+                    "Deleted projects must be removed from recent items, parameter memory and saved filters")
+        try await perform(.archive(python.id, false), "Preview project should restore")
+        let reloaded = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                                 nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { reloaded.stop() }
+        try await waitUntil("experience preference reload") { reloaded.activityDataReady && !reloaded.activityReadInProgress }
+        try require(reloaded.activityTimers.activeSession == nil, "Relaunching must not auto-start a recent timer")
+        try require(reloaded.activityExperience.range == 30 && reloaded.activityExperience.sortOrder == .ascending
+                    && reloaded.activityExperience.section == .statistics,
+                    "Range, sort and workspace section must survive a restart")
+        try require(reloaded.activityExperience.selectedActivityIDs == [sql.id], "Restart must preserve only still-valid selected projects")
+        try require(reloaded.timerPreference(for: sql.id).mode == .countdown && reloaded.timerPreference(for: sql.id).duration == 120,
+                    "A restored project must keep its original per-project timer settings")
+        try require(reloaded.activityTimers.sessions.first { $0.id == addedID }?.note == "窗口函数练习",
+                    "Optional study content must survive restart")
+
+        // Switch persistence and sleep can cross while the UI still displays A.
+        try await perform(.start(sql.id, .stopwatch, nil), "Sleep-switch fixture should start")
+        try await waitUntil("sleep-switch poll drain") { !store.activityReadInProgress }
+        let raceLock = try HeldActivityLock(url: writer.storageURL.appendingPathExtension("lock"))
+        now = now.addingTimeInterval(30)
+        let switched = Task { @MainActor in await store.performActivityAction(.switchActivity(python.id, .stopwatch, nil)) }
+        try await waitUntil("switch waiting on lock") { store.activitySaveInProgress }
+        now = now.addingTimeInterval(20)
+        store.pauseActivityTimerForSleep()
+        now = now.addingTimeInterval(17 * 3600)
+        raceLock.release()
+        let switchError = await switched.value
+        try require(switchError == nil, "Switch queued before sleep must commit atomically")
+        store.refresh()
+        try await waitUntil("sleep-switch merge") { !store.activityReadInProgress }
+        try require(store.activityTimers.activeSession?.activityID == python.id && store.activityTimers.activeSession?.isPaused == true
+                    && store.activityTimers.activeSession?.elapsed(at: now) == 20,
+                    "The switched successor must exclude overnight sleep")
+        let diskRace = ActivityTimerStore(storageURL: writer.storageURL).load()
+        try require(diskRace.activeSession?.isPaused == true && diskRace.activeSession?.elapsed(at: now) == 20,
+                    "The switched sleep boundary must survive restart")
+        try await perform(.finish, "Sleep-switch fixture should finish")
+
+        try verifyChartDateSelection()
+        let preview = ActivityWorkspaceWindow(contentRect: NSRect(x: 0, y: 0, width: 840, height: 1000), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        preview.activityStore = reloaded
+        preview.isReleasedWhenClosed = false
+        preview.contentView = NSHostingView(rootView: ActivityTimersView(store: reloaded, initialSection: 1))
+        preview.orderFront(nil)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        try writePreview(preview, to: output.appendingPathComponent("experience-statistics.png"))
+        func nativeFields(_ view: NSView) -> [NSTextField] {
+            (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap { nativeFields($0) }
+        }
+        if let search = nativeFields(preview.contentView!).first(where: { $0.placeholderString == L("查找项目（不改变统计筛选）") }),
+           preview.makeFirstResponder(search), let editor = search.currentEditor() as? NSTextView {
+            let selectionBefore = reloaded.activityExperience.selectedActivityIDs
+            editor.selectAll(nil)
+            editor.insertText("SQL", replacementRange: editor.selectedRange())
+            try await Task.sleep(nanoseconds: 50_000_000)
+            try require(editor.string == "SQL" && preview.firstResponder === editor, "Native search typing must retain its field editor")
+            editor.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0), replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+            for _ in 0..<5 { now = now.addingTimeInterval(1); reloaded.refresh(); try await Task.sleep(nanoseconds: 25_000_000) }
+            try require(editor.hasMarkedText() && preview.firstResponder === editor,
+                        "Clock and background updates must preserve native marked-text composition and focus")
+            editor.unmarkText()
+            editor.selectAll(nil); editor.insertText("SQL", replacementRange: editor.selectedRange())
+            try await Task.sleep(nanoseconds: 100_000_000)
+            try require(reloaded.activityExperience.selectedActivityIDs == selectionBefore,
+                        "Typing a project query must not alter the statistics filter")
+            try writePreview(preview, to: output.appendingPathComponent("experience-project-search.png"))
+            editor.selectAll(nil); editor.insertText("", replacementRange: editor.selectedRange())
+            _ = preview.makeFirstResponder(nil)
+        } else {
+            print("SKIP: native field editor search/composition check could not find an editable AppKit field")
+        }
+        if let pointer = descendant(of: preview.contentView!, whoseClassContains: "ActivityChartPointerView") as? ActivityChartPointerView {
+            let local = CGPoint(x: pointer.plot.maxX - 3, y: pointer.plot.midY)
+            let event = NSEvent.mouseEvent(with: .leftMouseDown, location: pointer.convert(local, to: nil), modifierFlags: [], timestamp: 0,
+                                           windowNumber: preview.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            pointer.mouseDown(with: event)
+            try await Task.sleep(nanoseconds: 100_000_000)
+            try require(pointer.accessibilityValue() as? String == Calendar.current.startOfDay(for: reloaded.now).formatted(date: .abbreviated, time: .omitted),
+                        "A mounted chart must retain the clicked date after SwiftUI updates")
+            if let scroll = descendantScrollView(in: preview.contentView!) {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 470)); scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+            try writePreview(preview, to: output.appendingPathComponent("experience-day-details.png"))
+        } else { throw SmokeFailure(description: "Statistics tab must mount a selectable native chart") }
+        preview.contentView = NSHostingView(rootView: ActivityTimersView(store: reloaded, initialSection: 2))
+        try await Task.sleep(nanoseconds: 250_000_000)
+        try writePreview(preview, to: output.appendingPathComponent("experience-records.png"))
+        let originalName = reloaded.activityTimers.activities.first { $0.id == sql.id }!.name
+        let renameForMenu = await reloaded.performActivityAction(.rename(sql.id, "快捷键撤销测试"))
+        try require(renameForMenu == nil, "Native menu fixture rename should save")
+        let undoItem = NSMenuItem(title: "", action: #selector(ActivityWorkspaceWindow.undo(_:)), keyEquivalent: "z")
+        try require(preview.validateMenuItem(undoItem) && undoItem.title == reloaded.activityUndoTitle,
+                    "The native Undo menu must describe the actual operation")
+        preview.undo(nil)
+        try await waitUntil("native menu undo") { reloaded.activityTimers.activities.first { $0.id == sql.id }?.name == originalName }
+        try require(reloaded.activityRedoTitle != nil, "Native Undo must use the operation-specific history")
+        let textEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+        textEditor.allowsUndo = true
+        preview.contentView = textEditor
+        _ = preview.makeFirstResponder(textEditor)
+        textEditor.insertText("中文草稿", replacementRange: NSRange(location: 0, length: 0))
+        textEditor.breakUndoCoalescing()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try require(textEditor.undoManager?.canUndo == true, "The field editor should own its text undo")
+        let textUndo = textEditor.tryToPerform(#selector(ActivityWorkspaceWindow.undo(_:)), with: nil)
+        try require(textUndo && textEditor.string.isEmpty && reloaded.activityTimers.activities.first { $0.id == sql.id }?.name == originalName,
+                    "Text Undo must edit the draft without undoing an application record")
+        preview.close()
+        var many = ActivityTimerDocument()
+        for index in 1...50 {
+            try many.addActivity(name: "课题 \(index)")
+            try many.addRecord(activityID: many.activities.last!.id, startedAt: now.addingTimeInterval(-86400 - Double(index * 60)), duration: Double(30 + index * 30), at: now)
+        }
+        let manyDirectory = output.appendingPathComponent("experience-many-\(UUID().uuidString)")
+        try ActivityTimerStore(storageURL: manyDirectory.appendingPathComponent("timers.json")).save(many)
+        let manyStore = PlanStore(storageDirectory: manyDirectory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                                  nowProvider: { now }, startClock: false, useBackgroundActivityIO: true)
+        defer { manyStore.stop() }
+        try await waitUntil("50 project load") { manyStore.activityDataReady && !manyStore.activityReadInProgress }
+        let manyWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 840, height: 1000), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        manyWindow.isReleasedWhenClosed = false
+        manyWindow.contentView = NSHostingView(rootView: ActivityTimersView(store: manyStore, initialSection: 1))
+        manyWindow.orderFront(nil)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        guard let manyPointer = descendant(of: manyWindow.contentView!, whoseClassContains: "ActivityChartPointerView") as? ActivityChartPointerView else {
+            throw SmokeFailure(description: "A 50-project statistics page must mount its chart")
+        }
+        try require(manyPointer.regions.count == 50, "Collapsing a dense legend must not omit any chart data")
+        try writePreview(manyWindow, to: output.appendingPathComponent("experience-50-projects.png"))
+        if let search = nativeFields(manyWindow.contentView!).first(where: { $0.placeholderString == L("查找项目（不改变统计筛选）") }),
+           manyWindow.makeFirstResponder(search), let editor = search.currentEditor() as? NSTextView {
+            editor.selectAll(nil); editor.insertText("课题 50", replacementRange: editor.selectedRange())
+            try await Task.sleep(nanoseconds: 100_000_000)
+            try require(manyStore.activityExperience.selectedActivityIDs?.count == 50,
+                        "Looking up one project among fifty must keep all selected until explicit focus")
+            func nativeButtons(_ view: NSView) -> [NSButton] {
+                (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { nativeButtons($0) }
+            }
+            if let only = nativeButtons(manyWindow.contentView!).first(where: { $0.title == L("只看此项目") }) {
+                only.performClick(nil)
+                try await waitUntil("project focus button") { manyStore.activityExperience.selectedActivityIDs == [many.activities.last!.id] }
+                try require(manyPointer.regions.count == 1, "The explicit focus button must show only the chosen project's chart")
+            } else {
+                // SwiftUI can draw a button without an NSButton backing view.
+                // Post native window events into this isolated application's
+                // event queue, using the rendered candidate row's position.
+                manyWindow.makeKeyAndOrderFront(nil)
+                let field = search.convert(search.bounds, to: nil)
+                let point = NSPoint(x: manyWindow.contentView!.bounds.maxX - 68, y: field.minY - 55)
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: manyWindow.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!
+                    NSApp.postEvent(event, atStart: false)
+                }
+                try await waitUntil("SwiftUI project focus click") { manyStore.activityExperience.selectedActivityIDs == [many.activities.last!.id] }
+                try await Task.sleep(nanoseconds: 100_000_000)
+                try require(manyPointer.regions.count == 1, "A native window click on Focus must update the chart and saved filter together")
+            }
+            try writePreview(manyWindow, to: output.appendingPathComponent("experience-50-project-search.png"))
+        } else { print("SKIP: 50-project native search field is unavailable in this session") }
+        manyWindow.close()
+        print("PASS: production background experience flow, parameter/recent memory, archive/restore, atomic switch, combined record edits, scoped undo/conflicts, restart and date selection")
+    }
+
+    @MainActor
+    private static func verifyChartDateSelection() throws {
+        let view = ActivityChartPointerView(frame: NSRect(x: 0, y: 0, width: 720, height: 300))
+        let calendar = Calendar.current
+        let first = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_793_760_000))
+        let end = calendar.date(byAdding: .day, value: 7, to: first)!
+        let plot = CGRect(x: 10, y: 10, width: 700, height: 210)
+        var selected: [Date] = []
+        view.configure(regions: [], plot: plot, dateRange: first...end, onSelectDay: { selected.append($0) }, onHover: { _ in })
+        func click(_ x: CGFloat, _ y: CGFloat) {
+            let location = view.convert(CGPoint(x: x, y: y), to: nil)
+            let event = NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+                                          windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            view.mouseDown(with: event)
+        }
+        click(60, 100)
+        try require(selected.last == first, "An empty first column must still select its date")
+        click(360, 280)
+        try require(selected.last == calendar.date(byAdding: .day, value: 3, to: first), "Clicking the date-axis area must select its day")
+        click(710, 100)
+        try require(selected.last == calendar.date(byAdding: .day, value: 6, to: first), "The plot's right edge must select its last in-range day")
+        let count = selected.count
+        click(0, 100); click(60, 0)
+        try require(selected.count == count, "Clicks beside the plot or above it must not change the selected date")
+        let left = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                    context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 123)!
+        view.keyDown(with: left)
+        try require(selected.last == calendar.date(byAdding: .day, value: 5, to: first), "A keyboard arrow must move one calendar day")
+        for _ in 0..<20 { view.keyDown(with: left) }
+        try require(selected.last == first, "Keyboard date navigation must remain inside the chart domain")
+        try require(view.acceptsFirstResponder && view.accessibilityCustomActions()?.count == 3,
+                    "Selectable charts must provide keyboard focus and assistive date actions")
+        view.configure(regions: [], plot: plot, onHover: { _ in })
+        let disabledCount = selected.count
+        click(60, 100)
+        try require(!view.acceptsFirstResponder && selected.count == disabledCount, "Preview-only charts must keep their previous non-selecting behavior")
     }
 
     @MainActor
@@ -346,6 +936,522 @@ private enum NativeSmoke {
     }
 
     @MainActor
+    private static func verifySleepAndStudyRecords(in output: URL) throws {
+        let directory = output.appendingPathComponent("study-regressions-\(UUID().uuidString)")
+        let start = ISO8601DateFormatter().date(from: "2026-11-06T14:30:00Z")!
+        var now = start
+        let preferences = SmokeDefaults()
+        let store = PlanStore(storageDirectory: directory, defaults: preferences, allowsLoginItemChanges: false,
+                              nowProvider: { now }, useBackgroundActivityIO: false)
+        defer { store.stop() }
+        try require(store.addTimedActivity(name: "SQL") == nil, "Initial project should save")
+        let sqlID = store.activityTimers.activities[0].id
+        let stale = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { stale.stop() }
+        try require(store.addTimedActivity(name: "cpc") == nil, "New cpc project should save")
+        let cpcID = store.activityTimers.activities.last!.id
+        try require(store.startActivityTimer(activityID: cpcID, mode: .stopwatch, duration: nil) == nil, "Cpc stopwatch should start")
+        now = start.addingTimeInterval(90)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
+        try require(store.activityTimers.activeSession?.isPaused == true, "willSleep must synchronously pause the timer")
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
+        now = start.addingTimeInterval(17 * 3600)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try require(store.activityTimers.activeSession?.isPaused == true, "Wake must keep the timer paused until explicit resume")
+        try require(store.activityTimers.total(for: [cpcID], at: now) == 90, "Overnight sleep must not enter study statistics")
+        try require(stale.renameTimedActivity(id: sqlID, name: "数据库") == nil, "A stale window should safely apply its edit")
+        try require(stale.activityTimers.activities.contains { $0.id == cpcID }, "Stale saves must retain newly created projects")
+        store.refresh()
+        try require(store.activityTimers.activities[0].name == "数据库", "Refresh must synchronize other windows' changes")
+        try require(store.finishActivityTimer() == nil, "A paused overnight timer should finish")
+        let sessionID = store.activityTimers.sessions.last!.id
+        try require(store.correctActivityDuration(sessionID: sessionID, duration: 60) == nil, "Study duration correction should save")
+        try require(store.activityTimers.total(for: [cpcID], at: now) == 60, "Correction must update totals immediately")
+        let reloaded = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                                 nowProvider: { now }, startClock: false)
+        defer { reloaded.stop() }
+        try require(reloaded.activityTimers == store.activityTimers, "Corrected record and project colors must survive restart")
+        let url = directory.appendingPathComponent("timers.json")
+        let data = try Data(contentsOf: url)
+        let before = store.activityTimers
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try require(store.correctActivityDuration(sessionID: sessionID, duration: 30) != nil, "A failed correction must be reported")
+        try require(store.activityTimers == before, "A failed correction must preserve displayed and original durations")
+        try FileManager.default.removeItem(at: url)
+        try data.write(to: url)
+        try require(store.correctActivityDuration(sessionID: sessionID, duration: 90) == nil, "Original duration should be restorable")
+
+        // A storage failure at sleep is retried at the original sleep boundary.
+        try require(store.startActivityTimer(activityID: sqlID, mode: .countdown, duration: 1800) == nil, "Sleep countdown should start")
+        now = now.addingTimeInterval(60)
+        let running = try Data(contentsOf: url)
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
+        try require(store.activityTimerError != nil, "A failed sleep save must surface an error")
+        try require(store.activityTimers.activeSession?.isPaused == true, "Even a failed disk write must leave the visible timer paused")
+        now = now.addingTimeInterval(17 * 3600)
+        try FileManager.default.removeItem(at: url)
+        try running.write(to: url)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try require(store.activityTimers.activeSession?.isPaused == true, "Sleep pause should retry after storage recovers")
+        try require(store.activityTimers.activeSession?.elapsed(at: now) == 60, "Retry must use sleep time, not wake time")
+        try require(store.activityTimerError == nil, "A successful sleep retry should clear the error")
+        try require(store.toggleActivityTimerPause() == nil, "Wake requires explicit resume")
+        now = now.addingTimeInterval(30)
+        try require(store.finishActivityTimer() == nil, "Resumed countdown should finish")
+        try require(store.activityTimers.total(for: [sqlID], at: now) == 90, "Only awake active stretches should accumulate")
+
+        // Reproduce the original long-running finish path independently of sleep.
+        try require(store.startActivityTimer(activityID: cpcID, mode: .stopwatch, duration: nil) == nil, "Long stopwatch should start")
+        now = now.addingTimeInterval(17 * 3600)
+        try require(store.finishActivityTimer() == nil, "17-hour stopwatch should finish and persist")
+        let completed = store.activityTimers.sessions.last!
+        try require(completed.savedDuration == 61_200, "Long stopwatch must not be capped or dropped")
+        try require(store.correctActivityDuration(sessionID: completed.id, duration: 5400) == nil, "Forgotten timer should correct to 90 minutes")
+        try require(stale.renameTimedActivity(id: cpcID, name: "CPC") == nil, "Stale edits must preserve a completed correction")
+        try require(stale.activityTimers.total(for: [cpcID], at: now) == 5490, "Stale instance must not restore old totals")
+        try require(store.addActivityRecord(activityID: cpcID, startedAt: now.addingTimeInterval(-600), duration: 300) == nil, "A missing session can be added manually")
+        try require(store.activityTimers.total(for: [cpcID], at: now) == 5790, "Manual records must enter totals")
+        print("PASS: sleep/wake notification path, overnight finish, stale windows, duration edits, missing records and write recovery")
+    }
+
+    @MainActor
+    private static func verifyStudyChartHover(in output: URL) throws {
+        let now = ISO8601DateFormatter().date(from: "2026-11-08T10:00:00Z")!
+        let directory = output.appendingPathComponent("chart-hover-\(UUID().uuidString)")
+        let store = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        let configuration = StudyChartConfiguration()
+        let names = ["SQL", "测试", "Python 语言与异步编程 · 服务端任务调度和网络请求练习", "HTTP 与计算机网络",
+                     "学习", "cpc", "阅读", "算法", "数据库原理", "操作系统", "系统设计", "英语"]
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        for index in 0..<8 {
+            try require(store.addTimedActivity(name: names[index]) == nil, "Hover fixture project should save")
+            try require(store.addActivityRecord(activityID: store.activityTimers.activities.last!.id,
+                                               startedAt: yesterday, duration: index == 7 ? 1 : Double(900 + index * 120)) == nil,
+                        "Hover fixture record should save")
+        }
+        let sql = store.activityTimers.activities[0]
+        try require(store.addActivityRecord(activityID: sql.id, startedAt: yesterday.addingTimeInterval(-86400), duration: 600) == nil,
+                    "A second day's record should save")
+        let window = NSWindow(contentRect: NSRect(x: 60, y: 60, width: 840, height: 300),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: StudyChartPreview(store: store, configuration: configuration))
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        defer { window.close(); store.stop(); AppLanguage.current = .chinese }
+        pumpEvents(for: 0.3)
+        guard let pointer = descendant(of: window.contentView!, whoseClassContains: "ActivityChartPointerView") as? ActivityChartPointerView else {
+            throw SmokeFailure(description: "Daily chart must install its pointer tracking overlay")
+        }
+        pointer.updateTrackingAreas()
+        try require(window.acceptsMouseMovedEvents, "The chart window must distribute mouse-moved events")
+        try require(pointer.trackingAreas.contains { $0.options.contains(.mouseMoved) && $0.options.contains(.inVisibleRect) },
+                    "The chart must track pointer movement in its visible area")
+
+        func move(to location: CGPoint) throws {
+            guard let event = NSEvent.mouseEvent(with: .mouseMoved, location: pointer.convert(location, to: nil),
+                                                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                clickCount: 0, pressure: 0) else {
+                throw SmokeFailure(description: "Unable to create chart pointer event")
+            }
+            // Synthetic window events do not carry AppKit's tracking-area dispatch.
+            // Deliver to the installed area's owner, the same entry point used by AppKit.
+            guard let owner = pointer.trackingAreas.first(where: { $0.options.contains(.mouseMoved) })?.owner as? NSResponder else {
+                throw SmokeFailure(description: "Chart tracking area must have an event responder")
+            }
+            owner.mouseMoved(with: event)
+            pumpEvents(for: 0.03)
+        }
+
+        func hover(_ region: ActivityChartRegion) throws {
+            try move(to: CGPoint(x: region.frame.midX, y: region.frame.midY))
+            try require(pointer.accessibilityHelp() == region.detail, "Hover must show exactly this block's project, date and duration: \(region.detail)")
+        }
+
+        try require(pointer.regions.count == 9, "Zero-duration days must not create hover regions")
+        for region in pointer.regions { try hover(region) }
+        let steady = pointer.regions.first { $0.frame.height >= 16 }!
+        try hover(steady)
+        let changes = pointer.hoverChangeCount
+        let indexBuilds = pointer.hitIndexBuildCount
+        for index in 0..<100 {
+            let offset = CGFloat(index % 10) / 20
+            try move(to: CGPoint(x: steady.frame.midX + offset, y: steady.frame.midY))
+        }
+        try require(pointer.hoverChangeCount == changes, "Moving inside one block must not repeatedly redraw the tooltip")
+        try require(pointer.hitIndexBuildCount == indexBuilds, "Hovering must reuse the geometry and hit index")
+        let thin = pointer.regions.first { $0.segment.point.duration == 1 }!
+        try require(thin.frame.height < 1, "The fixture must include a subpixel-height record")
+        try hover(thin)
+        let first = pointer.regions.first!
+        try move(to: CGPoint(x: first.frame.minX - 6, y: first.frame.midY))
+        try require(pointer.accessibilityHelp() == nil, "The gap beside a bar must not show a project")
+        try move(to: CGPoint(x: first.frame.minX - 2, y: first.frame.midY))
+        try require(pointer.accessibilityHelp() == first.detail, "A small horizontal tolerance should make narrow bars easier to hit")
+        try move(to: CGPoint(x: first.frame.midX, y: first.frame.maxY + 2))
+        try require(pointer.accessibilityHelp() == nil, "Axes and the area below bars must not show a project")
+        let stack = pointer.regions.filter { $0.segment.point.day == yesterday }.sorted { $0.segment.lowerBound < $1.segment.lowerBound }
+        try move(to: CGPoint(x: stack[0].frame.midX, y: stack[0].frame.minY - 0.01))
+        try require(pointer.accessibilityHelp() == stack[1].detail, "Crossing a stack boundary must immediately identify the next project")
+        try move(to: CGPoint(x: stack[0].frame.midX, y: stack[0].frame.minY + 0.01))
+        try require(pointer.accessibilityHelp() == stack[0].detail, "Crossing back must restore the lower project")
+
+        // Add projects after the chart is already mounted, including beyond the original eight colors.
+        for index in 8..<names.count {
+            try require(store.addTimedActivity(name: names[index]) == nil, "A later project should save")
+            try require(store.addActivityRecord(activityID: store.activityTimers.activities.last!.id,
+                                               startedAt: yesterday, duration: 1500) == nil, "A later project's record should save")
+        }
+        pumpEvents(for: 0.2)
+        try require(pointer.regions.count == 13, "New projects must acquire hover regions without reopening the chart")
+        try require(Set(pointer.regions.map { $0.activity.chartLabel }).count == 12, "All twelve projects must have distinct visible numbers")
+        for region in pointer.regions { try hover(region) }
+        let renamedID = sql.id
+        try hover(pointer.regions.first { $0.activity.id == renamedID }!)
+        try require(store.renameTimedActivity(id: renamedID, name: "SQL · 数据库查询") == nil, "Renaming a hovered project should save")
+        pumpEvents(for: 0.1)
+        try require(pointer.accessibilityHelp()?.contains("SQL · 数据库查询") == true, "The visible tooltip must follow a rename without mouse movement")
+        configuration.excluded = [renamedID]
+        pumpEvents(for: 0.1)
+        try require(pointer.regions.allSatisfy { $0.activity.id != renamedID }, "Filtered projects must lose their hover regions")
+        try require(pointer.accessibilityHelp()?.contains("SQL · 数据库查询") != true, "Filtering must not leave a stale tooltip")
+        for region in pointer.regions { try hover(region) }
+        configuration.excluded = Set(store.activityTimers.activities.map(\.id))
+        pumpEvents(for: 0.1)
+        try require(pointer.regions.isEmpty && pointer.accessibilityHelp() == nil, "Clearing the selection must clear hover details")
+        configuration.excluded = []
+        configuration.days = 30
+        window.setContentSize(NSSize(width: 680, height: 280))
+        pumpEvents(for: 0.2)
+        for region in pointer.regions { try hover(region) }
+        configuration.days = 7
+        window.setContentSize(NSSize(width: 840, height: 300))
+        pumpEvents(for: 0.1)
+        let longName = pointer.regions.first { $0.activity.name == names[2] }!
+        let dataURL = directory.appendingPathComponent("timers.json")
+        let saved = try Data(contentsOf: dataURL)
+        try hover(longName)
+        try writePreview(window, to: output.appendingPathComponent("study-chart-hover-light.png"))
+        store.theme = .horror
+        pumpEvents(for: 0.1)
+        try hover(pointer.regions.first { $0.activity.name == names[2] }!)
+        try writePreview(window, to: output.appendingPathComponent("study-chart-hover-dark.png"))
+        store.language = .english
+        pumpEvents(for: 0.1)
+        try hover(pointer.regions.first { $0.activity.chartLabel == "#12" }!)
+        try require(pointer.accessibilityHelp()?.contains("hr") == true, "Hover duration should follow the current language")
+        try writePreview(window, to: output.appendingPathComponent("study-chart-hover-en.png"))
+        let event = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 0,
+                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)!
+        pointer.mouseExited(with: event)
+        pumpEvents(for: 0.05)
+        try require(pointer.accessibilityHelp() == nil, "Leaving the chart must dismiss the tooltip")
+        try require(try Data(contentsOf: dataURL) == saved, "Hovering, filtering, resizing and theme changes must not change study records")
+        print("PASS: chart hover, adjacent stack boundaries, tiny blocks, empty gaps, new projects, distinct numbers, rename, filtering, resize and languages")
+    }
+
+    @MainActor
+    private static func verifyStudyPreviews(in output: URL) throws {
+        let now = ISO8601DateFormatter().date(from: "2026-11-07T04:00:00Z")!
+        let directory = output.appendingPathComponent("study-previews-\(UUID().uuidString)")
+        let store = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { store.stop(); AppLanguage.current = .chinese }
+        store.rememberActivityRange(0)
+        for name in ["cpc", "SQL", "Python 语言与异步编程", "HTTP 与计算机网络", "阅读"] {
+            try require(store.addTimedActivity(name: name) == nil, "Preview project should save")
+        }
+        for day in 1...7 {
+            for (index, activity) in store.activityTimers.activities.enumerated() {
+                let duration = Double(900 + (day * (index + 2) % 7) * 600)
+                try require(store.addActivityRecord(activityID: activity.id,
+                                                    startedAt: now.addingTimeInterval(Double(-day * 86400 + index * 3600)),
+                                                    duration: duration) == nil, "Preview daily record should save")
+            }
+        }
+        let cpcID = store.activityTimers.activities[0].id
+        try require(store.addActivityRecord(activityID: cpcID, startedAt: now.addingTimeInterval(-17 * 3600), duration: 17 * 3600) == nil, "Forgotten timer preview should save")
+        let sessionID = store.activityTimers.sessions.last!.id
+        try require(store.correctActivityDuration(sessionID: sessionID, duration: 5400) == nil, "Preview correction should save")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 840, height: 1160), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ActivityTimersView(store: store, initialSection: 1))
+        window.orderFront(nil)
+        pumpEvents(for: 0.2)
+        try writePreview(window, to: output.appendingPathComponent("study-statistics-light.png"))
+        store.theme = .horror
+        pumpEvents(for: 0.2)
+        try writePreview(window, to: output.appendingPathComponent("study-statistics-dark.png"))
+        if let scroll = descendantScrollView(in: window.contentView!) {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: 400))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            pumpEvents(for: 0.2)
+            try writePreview(window, to: output.appendingPathComponent("study-project-bars-dark.png"))
+            try require(store.addTimedActivity(name: "后续新增学习项目") == nil, "Adding a project with the statistics page open should save")
+            let newID = store.activityTimers.activities.last!.id
+            try require(store.addActivityRecord(activityID: newID, startedAt: now.addingTimeInterval(-1800), duration: 900) == nil,
+                        "The new project's first study record should save")
+            pumpEvents(for: 0.2)
+            guard let pointer = descendant(of: window.contentView!, whoseClassContains: "ActivityChartPointerView") as? ActivityChartPointerView,
+                  let region = pointer.regions.first(where: { $0.activity.id == newID }) else {
+                throw SmokeFailure(description: "The full statistics page must automatically select and display newly added projects")
+            }
+            let location = pointer.convert(CGPoint(x: region.frame.midX, y: region.frame.midY), to: nil)
+            let event = NSEvent.mouseEvent(with: .mouseMoved, location: location, modifierFlags: [], timestamp: 0,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)!
+            guard let owner = pointer.trackingAreas.first(where: { $0.options.contains(.mouseMoved) })?.owner as? NSResponder else {
+                throw SmokeFailure(description: "The full statistics chart must install a mouse tracking responder")
+            }
+            owner.mouseMoved(with: event)
+            pumpEvents(for: 0.1)
+            try require(pointer.accessibilityHelp() == region.detail, "The full statistics page must show hover details for a newly added project")
+            try writePreview(window, to: output.appendingPathComponent("study-statistics-hover-dark.png"))
+        } else {
+            throw SmokeFailure(description: "Study statistics must have a scrollable records area")
+        }
+        window.close()
+        let editor = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 340), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        editor.isReleasedWhenClosed = false
+        editor.contentView = NSHostingView(rootView: ActivityRecordEditor(store: store, session: store.activityTimers.sessions.last!))
+        editor.orderFront(nil)
+        try writePreview(editor, to: output.appendingPathComponent("study-duration-editor.png"))
+        store.language = .english
+        editor.contentView = NSHostingView(rootView: ActivityRecordEditor(store: store, session: store.activityTimers.sessions.last!))
+        try writePreview(editor, to: output.appendingPathComponent("study-duration-editor-en.png"))
+        editor.close()
+    }
+
+    @MainActor
+    private static func descendantScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        return view.subviews.lazy.compactMap { descendantScrollView(in: $0) }.first
+    }
+
+    @MainActor
+    private static func accessibilityNodes(in root: Any) -> [NSAccessibilityProtocol] {
+        var seen = Set<ObjectIdentifier>()
+        var result: [NSAccessibilityProtocol] = []
+        func visit(_ object: Any) {
+            let identity = ObjectIdentifier(object as AnyObject)
+            guard seen.insert(identity).inserted, seen.count < 20000 else { return }
+            if let node = object as? NSAccessibilityProtocol {
+                result.append(node)
+                for child in node.accessibilityChildren() ?? [] { visit(child) }
+            }
+            if let view = object as? NSView { for child in view.subviews { visit(child) } }
+        }
+        visit(root)
+        return result
+    }
+
+    @MainActor
+    private static func showInteractiveStudyPreview(controller: AppController, output: URL) throws {
+        let store = controller.store
+        let now = store.now
+        for name in ["SQL", "测试", "Python 语言与异步编程", "HTTP 与计算机网络", "学习", "cpc", "阅读", "算法", "数据库原理", "操作系统", "系统设计", "英语"] {
+            try require(store.addTimedActivity(name: name) == nil, "Interactive preview project should save")
+        }
+        for day in 1...7 {
+            for (index, activity) in store.activityTimers.activities.enumerated() {
+                let start = Calendar.current.startOfDay(for: now).addingTimeInterval(Double(-day * 86400 + index * 2400))
+                try require(store.addActivityRecord(activityID: activity.id, startedAt: start, duration: Double(900 + index * 60)) == nil,
+                            "Interactive preview record should save")
+            }
+        }
+        store.theme = .horror
+        controller.showTimers()
+        guard let window = NSApp.windows.first(where: { $0.title == L("事项计时 · FocusDesk") }) else {
+            throw SmokeFailure(description: "Interactive preview window did not open")
+        }
+        window.setContentSize(NSSize(width: 900, height: 760))
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                if let scroll = descendantScrollView(in: window.contentView!) {
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: 450))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                }
+                print("INTERACTIVE_PREVIEW_READY pid=\(ProcessInfo.processInfo.processIdentifier)")
+            }
+        }
+        var previous: String?
+        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard let pointer = descendant(of: window.contentView!, whoseClassContains: "ActivityChartPointerView") as? ActivityChartPointerView else { return }
+                let detail = pointer.accessibilityHelp()
+                if detail != previous {
+                    previous = detail
+                    print("POINTER_DETAIL: \(detail ?? "dismissed")")
+                    if detail != nil { try? writePreview(window, to: output.appendingPathComponent("ux-real-pointer.png")) }
+                }
+            }
+        }
+        Timer.scheduledTimer(withTimeInterval: 90, repeats: false) { _ in NSApp.terminate(nil) }
+    }
+
+    @MainActor
+    private static func verifyStudyUsability(in output: URL) throws {
+        var now = ISO8601DateFormatter().date(from: "2026-11-08T12:00:00Z")!
+        let directory = output.appendingPathComponent("usability-\(UUID().uuidString)")
+        let store = PlanStore(storageDirectory: directory, defaults: SmokeDefaults(), allowsLoginItemChanges: false,
+                              nowProvider: { now }, startClock: false)
+        defer { store.stop(); AppLanguage.current = .chinese }
+        store.rememberActivityRange(0)
+        for name in ["SQL", "HTTP 与计算机网络", "Python 语言与异步编程 · 服务端任务调度、网络请求与错误处理练习"] {
+            try require(store.addTimedActivity(name: name) == nil, "Usability fixture project should save")
+        }
+        let sqlID = store.activityTimers.activities[0].id
+        try require(store.addActivityRecord(activityID: sqlID, startedAt: now.addingTimeInterval(-3600), duration: 600) == nil,
+                    "Usability fixture should include today's record")
+        try require(store.addActivityRecord(activityID: store.activityTimers.activities[1].id,
+                                           startedAt: now.addingTimeInterval(-40 * 86400), duration: 1800) == nil,
+                    "All-time totals should include a record outside the trend window")
+        func checkCachedTotals() throws {
+            let snapshot = store.activityStatistics()
+            let actual = snapshot.summaries(days: 0, order: .descending)
+            let expected = store.activityTimers.durationSummaries(at: store.now, order: .descending)
+            try require(actual.map(\.id) == expected.map(\.id) && actual.map(\.duration) == expected.map(\.duration),
+                        "Published store statistics must invalidate with timer mutations")
+        }
+        try checkCachedTotals()
+        try require(store.startActivityTimer(activityID: sqlID, mode: .stopwatch, duration: nil) == nil, "Cache integration timer should start")
+        now = now.addingTimeInterval(60)
+        store.refresh()
+        try checkCachedTotals()
+        try require(store.toggleActivityTimerPause() == nil, "Cache integration timer should pause")
+        now = now.addingTimeInterval(600)
+        store.refresh()
+        try checkCachedTotals()
+        try require(store.toggleActivityTimerPause() == nil, "Cache integration timer should resume")
+        now = now.addingTimeInterval(30)
+        try require(store.finishActivityTimer() == nil, "Cache integration timer should finish")
+        try checkCachedTotals()
+        let completed = store.activityTimers.sessions.last!
+        try require(store.correctActivityDuration(sessionID: completed.id, duration: 45) == nil, "Cache integration duration should correct")
+        try checkCachedTotals()
+        let window = NSWindow(contentRect: NSRect(x: 20, y: 20, width: 840, height: 760),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ActivityTimersView(store: store, initialSection: 1))
+        window.orderFront(nil)
+        defer { window.close() }
+        pumpEvents(for: 0.2)
+        func node(_ identifier: String) throws -> NSAccessibilityProtocol {
+            guard let value = accessibilityNodes(in: window.contentView!).first(where: { $0.accessibilityIdentifier() == identifier }) else {
+                let found = accessibilityNodes(in: window.contentView!).compactMap { $0.accessibilityIdentifier() }
+                let children = window.contentView!.accessibilityChildren()?.map { String(describing: Swift.type(of: $0)) } ?? []
+                throw SmokeFailure(description: "Missing UI element \(identifier); found: \(found); root children: \(children)")
+            }
+            return value
+        }
+        func text(_ element: NSAccessibilityProtocol) -> String {
+            (element.accessibilityValue() as? String) ?? element.accessibilityLabel() ?? ""
+        }
+        func press(_ identifier: String) throws {
+            try require(try node(identifier).accessibilityPerformPress(), "UI element should respond to a press: \(identifier)")
+            pumpEvents(for: 0.1)
+        }
+        func type(_ value: String, into identifier: String) throws -> NSTextView {
+            let element = try node(identifier)
+            let frame = element.accessibilityFrame()
+            let fields = accessibilityNodes(in: window.contentView!).compactMap { $0 as? NSTextField }
+            guard let field = fields.first(where: { $0.accessibilityIdentifier() == identifier })
+                    ?? fields.first(where: { frame.contains(NSPoint(x: $0.accessibilityFrame().midX, y: $0.accessibilityFrame().midY)) }),
+                  window.makeFirstResponder(field), let editor = field.currentEditor() as? NSTextView else {
+                throw SmokeFailure(description: "Text field must be editable through its native field editor: \(identifier)")
+            }
+            editor.selectAll(nil)
+            editor.insertText(value, replacementRange: editor.selectedRange())
+            pumpEvents(for: 0.05)
+            return editor
+        }
+        func scroll(_ offset: CGFloat) throws {
+            guard let scroll = descendantScrollView(in: window.contentView!) else { throw SmokeFailure(description: "Usability page must scroll") }
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: offset))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            pumpEvents(for: 0.15)
+        }
+        if CommandLine.arguments.contains("--accessibility-actions") {
+            // Optional UI-client checks need an active accessibility client/XCUITest host.
+            try require(!(try node("addTimedActivity").isAccessibilityEnabled()), "An empty project name should disable Add")
+            _ = try type("SQL", into: "newActivityName")
+            try press("addTimedActivity")
+            try require(store.activityTimers.activities.count == 3, "A duplicate name must not create another project")
+            try require(text(try node("activityInputError")).contains("同名"), "Duplicate input should show an inline explanation")
+            try require(text(try node("newActivityName")) == "SQL", "An invalid submission must retain the entered name")
+            _ = try type("新增后的课题", into: "newActivityName")
+            try press("addTimedActivity")
+            try require(store.activityTimers.activities.count == 4, "The corrected name should save")
+            let runningID = store.activityTimers.activities.last!.id
+            try press("startActivityTimer")
+            try require(store.activityTimers.activeSession?.activityID == runningID, "The newly added project should be selected for Start")
+            let editor = try type("尚未提交的输入", into: "newActivityName")
+            for _ in 0..<5 { now = now.addingTimeInterval(1); store.refresh(); pumpEvents(for: 0.03) }
+            try require(window.firstResponder === editor && editor.string == "尚未提交的输入", "Clock refreshes must preserve input and keyboard focus")
+            now = now.addingTimeInterval(639)
+            store.refresh()
+            try scroll(500)
+            try require(text(try node("activityStatisticsScope")) == L("累计范围：全部记录"), "All-time scope should be explicitly labeled")
+            // Keep the editing row fixed while the running project's duration overtakes it.
+            try scroll(850)
+            try press("activityRename-\(sqlID)")
+            let renameEditor = try type("HTTP 与计算机网络", into: "activityRenameField")
+            let fieldBefore = try node("activityRenameField").accessibilityFrame()
+            now = now.addingTimeInterval(2)
+            store.refresh()
+            pumpEvents(for: 0.1)
+            try require(window.firstResponder === renameEditor && renameEditor.string == "HTTP 与计算机网络", "Duration reordering must not interrupt an edit")
+            let fieldAfter = try node("activityRenameField").accessibilityFrame()
+            try require(abs(fieldBefore.minY - fieldAfter.minY) < 1, "A live duration crossing must not move the editing row")
+            try press("saveActivityRename")
+            try require(store.activityTimers.activities.first { $0.id == sqlID }?.name == "SQL", "Duplicate rename must leave the original identity and name")
+            try require(text(try node("activityInputError")).contains("同名"), "Rename validation should appear next to the row")
+            try writePreview(window, to: output.appendingPathComponent("ux-inline-error.png"))
+            _ = try type("SQL 查询与索引", into: "activityRenameField")
+            try press("saveActivityRename")
+            try require(store.activityTimers.activities.first { $0.id == sqlID }?.name == "SQL 查询与索引", "A corrected rename should save in place")
+            try require(store.activityTimers.sessions.contains { $0.activityID == sqlID && $0.savedDuration == 600 }, "Renaming must preserve study records")
+            try press("activityRename-\(sqlID)")
+            _ = try type("不应保存的名称", into: "activityRenameField")
+            try press("cancelActivityRename")
+            try require(store.activityTimers.activities.first { $0.id == sqlID }?.name == "SQL 查询与索引", "Cancel should preserve the saved name")
+            try require(store.finishActivityTimer() == nil, "Usability timer should finish")
+        } else {
+            print("SKIP: accessibility button/typing actions require a connected UI client; use --accessibility-actions with that client active")
+        }
+        let timerDataBeforeThemes = try Data(contentsOf: directory.appendingPathComponent("timers.json"))
+        try scroll(0)
+        for theme in DeskTheme.allCases {
+            store.theme = theme
+            window.setContentSize(NSSize(width: 680, height: 700))
+            pumpEvents(for: 0.1)
+            let expected: NSAppearance.Name = theme.dark ? .darkAqua : .aqua
+            try require(window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expected,
+                        "Native controls must follow the \(theme.rawValue) theme")
+            try require(window.contentView!.fittingSize.width <= 681, "Long names must not force horizontal overflow")
+            try writePreview(window, to: output.appendingPathComponent("ux-timers-\(theme.rawValue).png"))
+        }
+        store.theme = .horror
+        store.language = .english
+        pumpEvents(for: 0.1)
+        try writePreview(window, to: output.appendingPathComponent("ux-timers-en-small.png"))
+        window.setContentSize(NSSize(width: 1040, height: 760))
+        pumpEvents(for: 0.1)
+        try writePreview(window, to: output.appendingPathComponent("ux-timers-en-wide.png"))
+        store.language = .chinese
+        try scroll(450)
+        try require(try Data(contentsOf: directory.appendingPathComponent("timers.json")) == timerDataBeforeThemes,
+                    "Theme, language and window changes must not rewrite study data")
+        print("PASS: all theme appearances and responsive long names; optional accessibility actions are reported separately")
+    }
+
+    @MainActor
     private static func verifyWindows(controller: AppController, output: URL) throws {
         let panels = NSApp.windows.compactMap { $0 as? NSPanel }
         let compacts = panels.filter { $0.title == "FocusDesk 小方块" }
@@ -452,7 +1558,7 @@ private enum NativeSmoke {
         try writePreview(settings[0], to: output.appendingPathComponent("settings.png"))
         controller.showHistory()
         controller.showHistory()
-        let history = NSApp.windows.filter { $0.title == "专注记录 · FocusDesk" }
+        let history = NSApp.windows.filter { $0.title == "计划回顾 · FocusDesk" }
         try require(history.count == 1, "Opening history twice should reuse the same window")
         try require(history[0].isVisible && history[0].canBecomeKey, "History should open as a readable native window")
         try writePreview(history[0], to: output.appendingPathComponent("history.png"))
@@ -779,7 +1885,9 @@ private enum NativeSmoke {
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             throw SmokeFailure(description: "Unable to create a window preview")
         }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+        }
         guard let captured = bitmap.cgImage,
               let context = CGContext(
                 data: nil, width: bitmap.pixelsWide, height: bitmap.pixelsHigh,

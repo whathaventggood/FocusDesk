@@ -59,21 +59,30 @@ printf 'APPL????' > "$APP_PATH/Contents/PkgInfo"
 
 /usr/libexec/PlistBuddy -c "Add :FocusDeskDefaultLanguage string ${FOCUSDESK_DEFAULT_LANGUAGE:-zh-Hans}" "$APP_PATH/Contents/Info.plist"
 
-# Ad-hoc signing is sufficient to run a locally built app on this Mac.
-# Desktop/iCloud file providers may attach FinderInfo to generated bundles.
-# Clear extended attributes only on this generated app before sealing it.
-/usr/bin/xattr -cr "$APP_PATH"
-/usr/bin/codesign --force --sign - "$APP_PATH"
-/usr/bin/codesign --verify --deep --strict "$APP_PATH"
+# Seal a clean staging copy outside Desktop/iCloud. File providers can reattach
+# FinderInfo immediately after xattr, even between clearing and signing a bundle.
+SIGNING_ROOT="$(mktemp -d /private/tmp/FocusDesk-signing.XXXXXX)"
+trap 'rm -rf "$SIGNING_ROOT"' EXIT
+STAGED_APP="$SIGNING_ROOT/FocusDesk.app"
+/usr/bin/ditto --norsrc --noextattr --noqtn --noacl "$APP_PATH" "$STAGED_APP"
+/usr/bin/xattr -cr "$STAGED_APP"
+/usr/bin/codesign --force --sign - "$STAGED_APP"
+/usr/bin/codesign --verify --deep --strict "$STAGED_APP"
+/usr/bin/ditto --norsrc --noextattr --noqtn --noacl "$STAGED_APP" "$APP_PATH"
 
 # Keep a portable copy without Finder/iCloud metadata. Some Desktop file
 # providers reattach FinderInfo to .app folders after signing has finished.
 ARCHIVE_PATH="$BUILD_ROOT/$CONFIGURATION/FocusDesk.zip"
 /usr/bin/ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl \
-  "$APP_PATH" "$ARCHIVE_PATH"
-(cd "$BUILD_ROOT/$CONFIGURATION" && shasum -a 256 FocusDesk.zip > SHA256SUMS.txt)
+  "$STAGED_APP" "$ARCHIVE_PATH"
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$STAGED_APP/Contents/Info.plist")"
+APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$STAGED_APP/Contents/Info.plist")"
+VERSIONED_NAME="FocusDesk-$APP_VERSION-build$APP_BUILD.zip"
+cp "$ARCHIVE_PATH" "$BUILD_ROOT/$CONFIGURATION/$VERSIONED_NAME"
+(cd "$BUILD_ROOT/$CONFIGURATION" && shasum -a 256 FocusDesk.zip "$VERSIONED_NAME" > SHA256SUMS.txt)
 
 printf '\nBuilt %s\n' "$APP_PATH"
 printf 'Portable archive: %s\n' "$ARCHIVE_PATH"
+printf 'Versioned archive: %s\n' "$BUILD_ROOT/$CONFIGURATION/$VERSIONED_NAME"
 printf 'Ad-hoc signed local build; not Developer ID signed or Apple notarized.\n'
 printf 'Open the app yourself when ready; this script does not launch it.\n'
