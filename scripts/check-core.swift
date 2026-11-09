@@ -831,7 +831,7 @@ private struct ActivityTimerChecks {
         var spring = ActivityTimerDocument()
         try spring.addActivity(name: "DST")
         try spring.addRecord(activityID: spring.activities[0].id, startedAt: dst, duration: 23 * 3600, at: dst.addingTimeInterval(24 * 3600))
-        CoreCheck.equal(spring.dailyDurations(at: dst.addingTimeInterval(24 * 3600), days: 2, calendar: calendar).map(\.duration), [23 * 3600, 0])
+        CoreCheck.equal(spring.dailyDurations(at: dst.addingTimeInterval(24 * 3600), days: 2, calendar: calendar).map(\.duration), [TimeInterval(23 * 3600), 0])
     }
 
     func testStaleStoresAndLongFinish() throws {
